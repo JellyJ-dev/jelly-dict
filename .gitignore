@@ -53,3 +53,9 @@ ChatGPT Image*.png
 # private maintainer-only notes — never publish
 app_files/dev.md
 **/dev.md
+task.md
+**/task.md
+implementation_plan.md
+**/implementation_plan.md
+walkthrough.md
+**/walkthrough.md

@@ -38,21 +38,60 @@ class WordbookController:
         self._anki_sync = anki_sync
         self._settings = settings
         self._status = status_bar
+        self._saved_words: set[tuple[str, str]] = set()
+        self._current_sort_option = "최신순"
+        self.update_saved_words_cache()
 
     def update_settings(self, settings: Settings, anki_sync: AnkiSyncService) -> None:
         self._settings = settings
         self._anki_sync = anki_sync
+        self.update_saved_words_cache()
 
     # ---------- inline rendering ---------------------------------------
 
-    def show_inline(self, language: str) -> None:
+    def update_saved_words_cache(self) -> None:
+        self._saved_words: set[tuple[str, str]] = set()
+        for lang in ("en", "ja"):
+            path = Path(self._settings.excel_path_for(lang))
+            if not path.exists():
+                continue
+            try:
+                entries = excel_writer.list_entries(path)
+                for entry in entries:
+                    if entry.language == lang and (entry.word or "").strip():
+                        normalized = normalize_word_key(entry.word, lang)
+                        self._saved_words.add((lang, normalized))
+            except Exception as exc:
+                log.warning("Failed to load entries for cache from %s: %s", path, exc)
+
+    def is_word_saved(self, word: str, language: str) -> bool:
+        normalized = normalize_word_key(word, language)
+        return (language, normalized) in self._saved_words
+
+    # ---------- inline rendering ---------------------------------------
+
+    def show_inline(self, language: str, sort_option: str = "최신순") -> None:
+        self._current_sort_option = sort_option
         language = language if language in ("en", "ja") else "en"
         path = Path(self._settings.excel_path_for(language))
-        entries = [
+        try:
+            raw_entries = excel_writer.list_entries(path)
+        except Exception:
+            raw_entries = []
+
+        filtered = [
             entry
-            for entry in reversed(excel_writer.list_entries(path))
+            for entry in raw_entries
             if entry.language == language and (entry.word or "").strip()
         ]
+
+        if sort_option == "오래된순":
+            entries = filtered
+        elif sort_option == "가나다순":
+            entries = sorted(filtered, key=lambda x: (x.word or "").lower())
+        else:  # "최신순"
+            entries = list(reversed(filtered))
+
         items: list[tuple[str, str, str, str]] = [
             (entry.word, language, entry.reading or "",
              wordbook_meaning_hint(entry, limit=160))
@@ -60,7 +99,7 @@ class WordbookController:
         ]
         self._input_view.set_wordbook(language, items)
         self._status.showMessage(
-            f"{'일본어' if language == 'ja' else '영어'} 단어장 {len(items)}개"
+            f"{'일본어' if language == 'ja' else '영어'} 단어장 {len(items)}개 (정렬: {sort_option})"
         )
 
     # ---------- deletion -----------------------------------------------
@@ -114,7 +153,8 @@ class WordbookController:
             anki_removed, anki_errors = self._anki_sync.delete_words(words)
 
         # Re-render the inline wordbook with the updated dataset.
-        self.show_inline(language)
+        self.update_saved_words_cache()
+        self.show_inline(language, self._current_sort_option)
         message = (
             f"{'일본어' if language == 'ja' else '영어'} 단어장 {removed}개 삭제됨"
         )

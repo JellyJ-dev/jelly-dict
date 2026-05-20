@@ -42,9 +42,10 @@ log = logging.getLogger(__name__)
 
 class LookupJob:
     def __init__(self, word: str, forced_language: str) -> None:
+        self.id = uuid4().hex
         self.word = word
         self.forced_language = forced_language
-        self.status = "pending"  # "pending" | "running"
+        self.status = "pending"  # "pending" | "running" | "failed"
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -86,6 +87,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._queue_timer.setSingleShot(True)
         self._queue_timer.setInterval(1000)
         self._queue_timer.timeout.connect(self._start_next_queued_lookup)
+        self._wordbook_sort_option = "최신순"
 
         self._build_ui()
         # Controllers that need widgets (input_view, status bar) must be
@@ -119,7 +121,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_view = WordInputView()
         self.input_view.submitted.connect(self._on_submit)
         self.input_view.jobCancelRequested.connect(self._on_job_cancel_requested)
+        self.input_view.jobRetryRequested.connect(self._on_job_retry_requested)
+        self.input_view.bulkRetryFailedRequested.connect(self._on_bulk_retry_failed_requested)
+        self.input_view.bulkClearFailedRequested.connect(self._on_bulk_clear_failed_requested)
+        self.input_view.wordbookSortChanged.connect(self._on_wordbook_sort_changed)
         self.input_view.ocrBatchSubmitted.connect(self._on_ocr_batch_submit)
+        self.input_view.ocrBulkLookupRequested.connect(self._on_ocr_bulk_submit)
         self.input_view.clearRecentRequested.connect(self._clear_recent)
         self.input_view.openWordListRequested.connect(self._open_word_list)
         self.input_view.openSettingsRequested.connect(self._open_settings)
@@ -250,7 +257,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_view.set_ocr_provider_label(name)
 
     def _refresh_recent(self) -> None:
-        items: list[tuple[str, str, str]] = []
+        items: list[tuple[str, str, str, str]] = []
         seen: set[tuple[str, str]] = set()
         # Single-query JOIN: avoids N+1 round-trips per refresh.
         for lang, word, entry_word, _, cached in self._cache.recent_with_entries(40):
@@ -264,7 +271,11 @@ class MainWindow(QtWidgets.QMainWindow):
             if dedup_key in seen:
                 continue
             seen.add(dedup_key)
-            items.append((display, lang, hint))
+
+            is_saved = self._wordbook_ctrl.is_word_saved(display, lang)
+            status = "saved" if is_saved else "recent"
+
+            items.append((display, lang, hint, status))
             if len(items) >= 20:
                 break
         self.input_view.set_recent(items)
@@ -272,9 +283,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_lookup_queue_ui(self) -> None:
         jobs_data = []
         if self._active_job is not None:
-            jobs_data.append((self._active_job.word, "running"))
+            jobs_data.append((self._active_job.word, "running", self._active_job.id))
         for job in self._lookup_queue:
-            jobs_data.append((job.word, "pending"))
+            jobs_data.append((job.word, job.status, job.id))
         self.input_view.set_lookup_queue(jobs_data)
 
     def _refresh_status_summary(self) -> None:
@@ -300,21 +311,48 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---------- lookup flow ----------------------------------------
 
     @QtCore.Slot(str)
-    def _on_job_cancel_requested(self, word: str) -> None:
-        if self._active_job is not None and self._active_job.word == word:
+    def _on_job_cancel_requested(self, job_id: str) -> None:
+        if self._active_job is not None and self._active_job.id == job_id:
             return
 
-        new_queue = [job for job in self._lookup_queue if job.word != word]
-        if len(new_queue) < len(self._lookup_queue):
-            removed_count = len(self._lookup_queue) - len(new_queue)
-            self._lookup_queue_total -= removed_count
-            self._lookup_queue = new_queue
+        target_job = None
+        for job in self._lookup_queue:
+            if job.id == job_id:
+                target_job = job
+                break
+
+        if target_job is not None:
+            self._lookup_queue.remove(target_job)
+            self._lookup_queue_total -= 1
+            if not self._lookup_queue:
+                self._lookup_queue_total = 1 if self._active_job is not None else 0
             self._refresh_lookup_queue_ui()
-            self.status.showMessage(f"'{word}' 대기가 취소되었습니다.")
+            self.status.showMessage(f"'{target_job.word}' 대기가 취소되었습니다.")
+
+    def _is_already_queued_or_active(self, word: str, forced_language: str) -> bool:
+        normalized = word.strip().lower()
+        lang_norm = (forced_language or "").strip().lower()
+        if self._active_job is not None:
+            active_lang = (self._active_job.forced_language or "").strip().lower()
+            if self._active_job.word.strip().lower() == normalized and active_lang == lang_norm:
+                return True
+        for job in self._lookup_queue:
+            job_lang = (job.forced_language or "").strip().lower()
+            if job.word.strip().lower() == normalized and job_lang == lang_norm:
+                return True
+        return False
 
     @QtCore.Slot(str, str)
     def _on_submit(self, word: str, forced_language: str) -> None:
-        job = LookupJob(word, forced_language)
+        word_stripped = word.strip()
+        if not word_stripped:
+            return
+        if self._is_already_queued_or_active(word_stripped, forced_language):
+            self.status.showMessage(f"'{word_stripped}' [{forced_language}] 은(는) 이미 대기열에 존재합니다.")
+            self.input_view.reset_input()
+            return
+
+        job = LookupJob(word_stripped, forced_language)
         self._lookup_queue.append(job)
         self._lookup_queue_total += 1
         self.input_view.reset_input()
@@ -331,16 +369,25 @@ class MainWindow(QtWidgets.QMainWindow):
         ] if isinstance(tokens_obj, list) else []
         if not tokens:
             return
-        
+
+        added_count = 0
         for token in tokens:
+            if self._is_already_queued_or_active(token, forced_language):
+                continue
             job = LookupJob(token, forced_language)
             self._lookup_queue.append(job)
             self._lookup_queue_total += 1
-            
+            added_count += 1
+
         self.input_view.reset_input()
         self._refresh_lookup_queue_ui()
-        if not self._is_lookup_active():
-            self._start_next_queued_lookup()
+        if added_count > 0:
+            if not self._is_lookup_active():
+                self._start_next_queued_lookup()
+
+    @QtCore.Slot(list, str)
+    def _on_ocr_bulk_submit(self, tokens: list[str], forced_language: str) -> None:
+        self._on_ocr_batch_submit(tokens, forced_language)
 
     def _start_lookup(self, word: str, forced_language: str) -> None:
         self.input_view.set_detection_label("")
@@ -380,20 +427,33 @@ class MainWindow(QtWidgets.QMainWindow):
     def _start_next_queued_lookup(self) -> None:
         if self._is_lookup_running():
             return
-        if not self._lookup_queue:
+
+        # Find first pending job
+        pending_idx = -1
+        for i, j in enumerate(self._lookup_queue):
+            if j.status == "pending":
+                pending_idx = i
+                break
+
+        if pending_idx == -1:
             self._active_job = None
-            self._lookup_queue_total = 0
             self.input_view.set_lookup_busy(False)
-            self.status.showMessage("모든 조회가 완료되었습니다.")
+            failed_count = sum(1 for j in self._lookup_queue if j.status == "failed")
+            if failed_count > 0:
+                self.status.showMessage(f"조회 대기 완료 (실패 {failed_count}개 보류 중)")
+            else:
+                self._lookup_queue_total = 0
+                self.status.showMessage("모든 조회가 완료되었습니다.")
             self._refresh_recent()
             self._refresh_lookup_queue_ui()
             return
-        
-        job = self._lookup_queue.pop(0)
+
+        job = self._lookup_queue.pop(pending_idx)
         self._active_job = job
         job.status = "running"
-        
-        index = self._lookup_queue_total - len(self._lookup_queue)
+
+        pending_count = sum(1 for j in self._lookup_queue if j.status == "pending")
+        index = max(1, self._lookup_queue_total - pending_count)
         self.status.showMessage(f"순차 조회 {index}/{self._lookup_queue_total}: {job.word}")
         self._refresh_recent()
         self._refresh_lookup_queue_ui()
@@ -402,12 +462,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def _schedule_next_queued_lookup(self) -> None:
         self._active_job = None
         self._refresh_lookup_queue_ui()
-        if not self._lookup_queue:
-            self._lookup_queue_total = 0
+
+        has_pending = any(j.status == "pending" for j in self._lookup_queue)
+        if not has_pending:
+            failed_count = sum(1 for j in self._lookup_queue if j.status == "failed")
+            if failed_count > 0:
+                self.status.showMessage(f"조회 대기 완료 (실패 {failed_count}개 보류 중)")
+            else:
+                self._lookup_queue_total = 0
+                self.status.showMessage("모든 조회가 완료되었습니다.")
             self.input_view.set_lookup_busy(False)
-            self.status.showMessage("모든 조회가 완료되었습니다.")
             self._refresh_recent()
             return
+
         self._queue_timer.stop()
         self._queue_timer.start()
 
@@ -431,10 +498,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_lookup_finished(self, outcome) -> None:
         job = self._active_job
         self.input_view.set_lookup_busy(False)
-        self._refresh_lookup_queue_ui()
-        
+
         query_word = job.word if job else (self._current_worker._word if self._current_worker else "?")
-        
+
         self.input_view.set_detection_label(
             f"감지된 언어: {outcome.detected_language}"
             + (" (캐시)" if outcome.from_cache else "")
@@ -449,7 +515,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 if not accepted:
                     self.status.showMessage("입력어와 다른 결과여서 저장하지 않았습니다.")
+                    if self._active_job is not None:
+                        self._active_job.status = "failed"
+                        self._lookup_queue.insert(0, self._active_job)
+                        self._active_job = None
                     self._return_to_input()
+                    self._refresh_lookup_queue_ui()
                     self._schedule_next_queued_lookup()
                     return
                 # User accepted: use the canonical headword instead of typed.
@@ -467,6 +538,11 @@ class MainWindow(QtWidgets.QMainWindow):
             if entry is not None:
                 self._present_entry(entry, force_preview=True)
                 return
+            if self._active_job is not None:
+                self._active_job.status = "failed"
+                self._lookup_queue.insert(0, self._active_job)
+                self._active_job = None
+            self._refresh_lookup_queue_ui()
             self._schedule_next_queued_lookup()
         else:
             log.warning(
@@ -477,6 +553,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 result.error_detail or "",
             )
             self.status.showMessage(f"조회 실패: {result.status}")
+            if self._active_job is not None:
+                self._active_job.status = "failed"
+                self._lookup_queue.insert(0, self._active_job)
+                self._active_job = None
+            self._refresh_lookup_queue_ui()
             self._schedule_next_queued_lookup()
 
     def _present_entry(self, entry: VocabularyEntry, force_preview: bool = False) -> None:
@@ -494,6 +575,10 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "저장 실패", str(exc))
             self._abort_lookup_queue()
             return
+
+        # update wordbook controller cache
+        self._wordbook_ctrl.update_saved_words_cache()
+
         self.status.showMessage(f"저장됨 ({outcome.status}) → {outcome.path}")
         self._return_to_input()
         self._refresh_recent()
@@ -509,26 +594,84 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot()
     def _on_preview_cancelled(self) -> None:
+        if self._active_job is not None:
+            # Cancelled preview can be kept or removed; here we treat it as failed/cancelled
+            self._active_job.status = "failed"
+            self._lookup_queue.insert(0, self._active_job)
+            self._active_job = None
         self._return_to_input()
+        self._refresh_lookup_queue_ui()
         self._schedule_next_queued_lookup()
 
     @QtCore.Slot(str)
     def _on_lookup_failed(self, message: str) -> None:
-        self._active_job = None
-        self.input_view.set_lookup_busy(False)
-        self._refresh_lookup_queue_ui()
         log.warning("lookup worker failed: %s", message)
         self.status.showMessage(f"오류: {message}")
+        if self._active_job is not None:
+            self._active_job.status = "failed"
+            self._lookup_queue.insert(0, self._active_job)
+            self._active_job = None
+        self.input_view.set_lookup_busy(False)
+        self._refresh_lookup_queue_ui()
         self._schedule_next_queued_lookup()
 
     @QtCore.Slot(str)
     def _on_unsupported(self, word: str) -> None:
-        self._active_job = None
-        self.input_view.set_lookup_busy(False)
-        self._refresh_lookup_queue_ui()
         log.info("unsupported input language: %s", word)
         self.status.showMessage("입력 언어 미지원")
+        if self._active_job is not None:
+            self._active_job.status = "failed"
+            self._lookup_queue.insert(0, self._active_job)
+            self._active_job = None
+        self.input_view.set_lookup_busy(False)
+        self._refresh_lookup_queue_ui()
         self._schedule_next_queued_lookup()
+
+    @QtCore.Slot(str)
+    def _on_job_retry_requested(self, job_id: str) -> None:
+        found_job = None
+        for job in self._lookup_queue:
+            if job.id == job_id and job.status == "failed":
+                job.status = "pending"
+                found_job = job
+                break
+        if found_job is not None:
+            self.status.showMessage(f"'{found_job.word}' 조회를 재시도합니다.")
+            self._refresh_lookup_queue_ui()
+            if not self._is_lookup_active():
+                self._start_next_queued_lookup()
+
+    @QtCore.Slot()
+    def _on_bulk_retry_failed_requested(self) -> None:
+        count = 0
+        for job in self._lookup_queue:
+            if job.status == "failed":
+                job.status = "pending"
+                count += 1
+        if count > 0:
+            self.status.showMessage(f"실패한 {count}개 단어 조회를 재시도합니다.")
+            self._refresh_lookup_queue_ui()
+            if not self._is_lookup_active():
+                self._start_next_queued_lookup()
+
+    @QtCore.Slot()
+    def _on_bulk_clear_failed_requested(self) -> None:
+        new_queue = [job for job in self._lookup_queue if job.status != "failed"]
+        removed = len(self._lookup_queue) - len(new_queue)
+        if removed > 0:
+            self._lookup_queue = new_queue
+            self._lookup_queue_total -= removed
+            if not self._lookup_queue:
+                self._lookup_queue_total = 1 if self._active_job is not None else 0
+            self.status.showMessage(f"실패한 {removed}개 단어가 대기열에서 제거되었습니다.")
+            self._refresh_lookup_queue_ui()
+
+    @QtCore.Slot(str)
+    def _on_wordbook_sort_changed(self, option: str) -> None:
+        self._wordbook_sort_option = option
+        current_mode = self.input_view._list_mode
+        if current_mode in ("en", "ja"):
+            self._wordbook_ctrl.show_inline(current_mode, option)
 
     @QtCore.Slot(str)
     def _on_ambiguous(self, word: str) -> None:
@@ -585,7 +728,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._show_wordbook_inline(language)
 
     def _show_wordbook_inline(self, language: str) -> None:
-        self._wordbook_ctrl.show_inline(language)
+        self._wordbook_ctrl.show_inline(language, self._wordbook_sort_option)
 
     @QtCore.Slot(str, object)
     def _delete_wordbook_entries(self, language: str, words_obj: object) -> None:
@@ -619,6 +762,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(str, int)
     def _on_words_deleted(self, language: str, count: int) -> None:
+        self._wordbook_ctrl.update_saved_words_cache()
+        self._refresh_recent()
         self.status.showMessage(f"{language} {count}개 삭제됨 (Excel)")
 
     def _confirm_suggestion(

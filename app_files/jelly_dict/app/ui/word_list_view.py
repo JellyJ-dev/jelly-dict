@@ -43,6 +43,13 @@ class WordListDialog(QtWidgets.QDialog):
         title.setObjectName("wordListTitle")
         top.addWidget(title)
         top.addStretch(1)
+
+        self.sort_combo = QtWidgets.QComboBox()
+        self.sort_combo.setObjectName("wordListSort")
+        self.sort_combo.addItems(["최신순", "오래된순", "가나다순"])
+        self.sort_combo.currentTextChanged.connect(self._on_sort_changed)
+        top.addWidget(self.sort_combo)
+
         self.count_label = QtWidgets.QLabel("0개")
         self.count_label.setObjectName("wordListCount")
         top.addWidget(self.count_label)
@@ -104,12 +111,29 @@ class WordListDialog(QtWidgets.QDialog):
     def _reload(self) -> None:
         path = Path(self._excel_path_for(self._current_language()))
         language = self._current_language()
-        self._all_entries = [
+        try:
+            raw_entries = excel_writer.list_entries(path)
+        except Exception:
+            raw_entries = []
+
+        filtered = [
             entry
-            for entry in reversed(excel_writer.list_entries(path))
+            for entry in raw_entries
             if _is_visible_entry(entry, language)
         ]
+
+        sort_option = self.sort_combo.currentText()
+        if sort_option == "오래된순":
+            self._all_entries = filtered
+        elif sort_option == "가나다순":
+            self._all_entries = sorted(filtered, key=lambda x: (x.word or "").lower())
+        else:  # "최신순"
+            self._all_entries = list(reversed(filtered))
+
         self._apply_filter()
+
+    def _on_sort_changed(self, text: str) -> None:
+        self._reload()
 
     def _apply_filter(self) -> None:
         needle = self.filter_edit.text().strip().lower()
