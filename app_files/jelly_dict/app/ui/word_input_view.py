@@ -83,6 +83,7 @@ class WordInputView(QtWidgets.QWidget):
     """Command-center style word input with a compact recent list."""
 
     submitted = QtCore.Signal(str, str)  # word, forced_language ("" = auto)
+    jobCancelRequested = QtCore.Signal(str)  # word
     ocrBatchSubmitted = QtCore.Signal(object, str)  # list[str], forced_language
     clearRecentRequested = QtCore.Signal()
     openWordListRequested = QtCore.Signal(str)
@@ -200,6 +201,38 @@ class WordInputView(QtWidgets.QWidget):
         ocr_layout.addWidget(self.ocr_candidates)
 
         panel_layout.addWidget(self.ocr_area)
+        
+        self.queue_panel = QtWidgets.QFrame()
+        self.queue_panel.setObjectName("queuePanel")
+        self.queue_panel.setVisible(False)
+        self.queue_panel.setStyleSheet("""
+            QFrame#queuePanel {
+                background: #1c1a17;
+                border: 1px solid #2d2a25;
+                border-radius: 6px;
+                padding: 6px;
+            }
+        """)
+        queue_layout = QtWidgets.QVBoxLayout(self.queue_panel)
+        queue_layout.setContentsMargins(4, 4, 4, 4)
+        queue_layout.setSpacing(4)
+        
+        queue_header = QtWidgets.QHBoxLayout()
+        queue_title = QtWidgets.QLabel("조회 대기열")
+        queue_title.setStyleSheet("font-weight: bold; color: #a49e94; font-size: 11px;")
+        self.queue_count_label = QtWidgets.QLabel("0개 대기 중")
+        self.queue_count_label.setStyleSheet("color: #8a847a; font-size: 11px;")
+        queue_header.addWidget(queue_title)
+        queue_header.addWidget(self.queue_count_label)
+        queue_header.addStretch(1)
+        queue_layout.addLayout(queue_header)
+        
+        self.queue_chips_frame = QtWidgets.QFrame()
+        self.queue_chips_layout = FlowLayout(self.queue_chips_frame, spacing=6)
+        self.queue_chips_layout.setContentsMargins(0, 2, 0, 2)
+        queue_layout.addWidget(self.queue_chips_frame)
+        
+        panel_layout.addWidget(self.queue_panel)
 
         controls = QtWidgets.QHBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
@@ -702,6 +735,72 @@ class WordInputView(QtWidgets.QWidget):
             qt_item.setToolTip(label)
             qt_item.setSizeHint(QtCore.QSize(620, 36))
             self.recent_list.addItem(qt_item)
+
+    def set_lookup_queue(self, jobs: list[tuple[str, str]]) -> None:
+        # Clear existing chips
+        while self.queue_chips_layout.count() > 0:
+            item = self.queue_chips_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+                
+        if not jobs:
+            self.queue_panel.setVisible(False)
+            return
+            
+        self.queue_panel.setVisible(True)
+        running_count = sum(1 for _, status in jobs if status == "running")
+        pending_count = sum(1 for _, status in jobs if status == "pending")
+        
+        status_text = ""
+        if running_count > 0:
+            status_text += f"조회 중 {running_count}개"
+        if pending_count > 0:
+            if status_text:
+                status_text += ", "
+            status_text += f"대기 {pending_count}개"
+        self.queue_count_label.setText(status_text)
+        
+        for word, status in jobs:
+            chip = QtWidgets.QPushButton()
+            chip.setText(f"⏳ {word}" if status == "running" else word)
+            
+            if status == "running":
+                chip.setCursor(QtCore.Qt.ArrowCursor)
+                chip.setToolTip(f"'{word}' (조회 중...)")
+                chip.setStyleSheet("""
+                    QPushButton {
+                        background-color: #3d3025;
+                        color: #e58d3c;
+                        border: 1px solid #a86122;
+                        border-radius: 4px;
+                        padding: 3px 8px;
+                        font-size: 11px;
+                        font-weight: bold;
+                    }
+                """)
+            else:
+                chip.setCursor(QtCore.Qt.PointingHandCursor)
+                chip.setToolTip(f"'{word}' (대기열에서 취소하려면 클릭)")
+                chip.setStyleSheet("""
+                    QPushButton {
+                        background-color: #24221f;
+                        color: #8c867c;
+                        border: 1px solid #383530;
+                        border-radius: 4px;
+                        padding: 3px 8px;
+                        font-size: 11px;
+                    }
+                    QPushButton:hover {
+                        background-color: #3d1c1c;
+                        color: #ff6b6b;
+                        border: 1px solid #c93b3b;
+                    }
+                """)
+                # Connect click event to signal only for pending items
+                chip.clicked.connect(lambda checked=False, w=word: self.jobCancelRequested.emit(w))
+            
+            self.queue_chips_layout.addWidget(chip)
 
     def set_wordbook(self, language: str, items: list[WordbookItem]) -> None:
         self._list_mode = language

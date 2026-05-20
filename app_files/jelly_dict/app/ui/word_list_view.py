@@ -106,7 +106,7 @@ class WordListDialog(QtWidgets.QDialog):
         language = self._current_language()
         self._all_entries = [
             entry
-            for entry in excel_writer.list_entries(path)
+            for entry in reversed(excel_writer.list_entries(path))
             if _is_visible_entry(entry, language)
         ]
         self._apply_filter()

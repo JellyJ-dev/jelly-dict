@@ -50,7 +50,7 @@ class WordbookController:
         path = Path(self._settings.excel_path_for(language))
         entries = [
             entry
-            for entry in excel_writer.list_entries(path)
+            for entry in reversed(excel_writer.list_entries(path))
             if entry.language == language and (entry.word or "").strip()
         ]
         items: list[tuple[str, str, str, str]] = [
