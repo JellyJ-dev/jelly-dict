@@ -2,7 +2,7 @@
 
 Uses the saved 蘇る (yomigaeru) page in tests/fixtures/. The fixture is
 chosen because it exercises the full feature surface: kanji + middle-dot
-variant headword (蘇る·甦る), conjugated POS label (5단활용 자동사), and
+variant headword (蘇る·甦る), typed variant saving, conjugated POS label (5단활용 자동사), and
 furigana-bearing examples.
 """
 from __future__ import annotations
@@ -24,12 +24,10 @@ def test_yomigaeru_parses_canonical_headword_and_reading():
         html, word="蘇る", source_url="x"
     )
     assert entry is not None
-    # The dictionary publishes both kanji forms separated by a middle dot.
-    # Per dev.md "always save lemma" rule, we save the canonical form
-    # (not the typed query).
-    assert "蘇る" in entry.word
-    assert "甦る" in entry.word
-    assert canonical == entry.word
+    # Naver publishes both kanji forms separated by a middle dot, but the
+    # saved card should use the exact variant the user searched for.
+    assert canonical == "蘇る·甦る"
+    assert entry.word == "蘇る"
     assert entry.reading == "よみがえる"
     assert entry.part_of_speech == ["5단활용 자동사"]
 

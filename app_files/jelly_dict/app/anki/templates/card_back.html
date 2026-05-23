@@ -14,11 +14,82 @@
 </script>
 {{/ShowBackAudio}}{{/WordAudio}}
 
-{{#Reading}}
-<div class="reading-line">{{Reading}}</div>
-{{/Reading}}
+<div class="headword-block">
+  {{#ShowRubyToggle}}{{#Reading}}
+  <div class="headword-ruby" id="headword-ruby">
+    <span class="headword-source">{{Word}}</span>
+    <span class="reading-source">{{Reading}}</span>
+  </div>
+  {{/Reading}}{{/ShowRubyToggle}}
+  <div class="headword">{{Word}}</div>
+</div>
 
-<div class="headword">{{Word}}</div>
+{{#ShowRubyToggle}}{{#Reading}}
+<script>
+(function(){
+  var root = document.getElementById('headword-ruby');
+  if (!root) return;
+  var word = (root.querySelector('.headword-source') || {}).textContent || '';
+  var reading = (root.querySelector('.reading-source') || {}).textContent || '';
+  if (!word || !reading) return;
+
+  function isKana(ch) {
+    return /[\u3040-\u30ffー]/.test(ch);
+  }
+
+  function nextKanaRun(chars, start) {
+    for (var i = start; i < chars.length; i++) {
+      if (!isKana(chars[i])) continue;
+      var j = i;
+      while (j < chars.length && isKana(chars[j])) j++;
+      return { start: i, text: chars.slice(i, j).join('') };
+    }
+    return null;
+  }
+
+  function addUnit(parts, base, yomi) {
+    parts.push(
+      '<span class="ruby-unit"><span class="ruby-text">' + yomi +
+      '</span><span class="ruby-base">' + base + '</span></span>'
+    );
+  }
+
+  var chars = Array.from(word);
+  var parts = [];
+  var rPos = 0;
+  for (var i = 0; i < chars.length;) {
+    if (isKana(chars[i])) {
+      addUnit(parts, chars[i], chars[i]);
+      if (reading.slice(rPos, rPos + chars[i].length) === chars[i]) {
+        rPos += chars[i].length;
+      }
+      i++;
+      continue;
+    }
+
+    var start = i;
+    while (i < chars.length && !isKana(chars[i])) i++;
+    var base = chars.slice(start, i).join('');
+    var upcoming = nextKanaRun(chars, i);
+    var yomi = '';
+    if (upcoming) {
+      var hit = reading.indexOf(upcoming.text, rPos);
+      if (hit >= rPos) {
+        yomi = reading.slice(rPos, hit);
+        rPos = hit;
+      }
+    } else {
+      yomi = reading.slice(rPos);
+      rPos = reading.length;
+    }
+    addUnit(parts, base, yomi || reading);
+  }
+
+  root.innerHTML = parts.join('');
+  root.parentElement.classList.add('headword-block--ruby');
+})();
+</script>
+{{/Reading}}{{/ShowRubyToggle}}
 
 {{#WordAudio}}{{#ShowBackAudio}}
 {{WordAudio}}

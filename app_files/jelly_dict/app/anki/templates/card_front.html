@@ -16,7 +16,12 @@
 </script>
 {{/ShowFrontAudio}}{{/WordAudio}}
 
-<div class="headword">{{Word}}</div>
+<div class="headword-block">
+  {{#Reading}}
+  <div class="reading-line reading-line--hidden">{{Reading}}</div>
+  {{/Reading}}
+  <div class="headword">{{Word}}</div>
+</div>
 
 {{#WordAudio}}{{#ShowFrontAudio}}
 {{WordAudio}}

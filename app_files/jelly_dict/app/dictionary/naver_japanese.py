@@ -98,10 +98,9 @@ def parse_with_canonical(
         return None, ""
 
     canonical_head, reading = _parse_head(entry_row, word)
-    # Always save the dictionary headword (lemma form). Typing 走った
-    # saves 走る; typing the variant 蘇る saves 蘇る·甦る as the
-    # dictionary publishes it.
-    headword = canonical_head or word
+    # Save the typed variant when Naver publishes multiple equivalent
+    # forms such as 蘇る·甦る; otherwise keep the dictionary lemma.
+    headword = _resolve_headword(word, canonical_head)
     pos = text_or_empty(first(entry_row, SEL_POS))
     senses = _parse_senses(entry_row)
     if not senses and not reading:
