@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -29,11 +30,14 @@ from app.ui.controllers.export_controller import ExportController
 from app.ui.controllers.wordbook_controller import WordbookController
 from app.ui.developer_tools_dialog import DeveloperToolsDialog
 from app.ui.duplicate_dialog import prompt_duplicate
+from app.ui.export_options import status_summary as export_status_summary
 from app.ui.entry_detail_dialog import EntryDetailDialog
 from app.ui.lookup_worker import LookupWorker
 from app.ui.ocr_worker import OcrWorker
 from app.ui.preview_editor_view import PreviewEditorView
+from app.ui.saved_words_worker import SavedWordsWorker
 from app.ui.settings_view import SettingsDialog
+from app.ui.startup_perf import StartupPerf
 from app.ui.word_input_view import WordInputView
 from app.storage import excel_writer
 
@@ -51,35 +55,43 @@ class LookupJob:
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
+        self._startup_perf = StartupPerf()
         self.setWindowTitle("jelly dict")
         self.resize(1180, 820)
         self.setMinimumSize(1020, 700)
 
         self._settings_store = SettingsStore()
-        self._settings: Settings = self._settings_store.load()
+        with self._startup_perf.span("settings_load"):
+            self._settings: Settings = self._settings_store.load()
         self._cache = CacheStore()
 
-        self._provider: DictionaryProvider = self._build_provider()
-        self._ocr_provider: OcrProvider = self._build_ocr_provider()
-        self._manual_provider = ManualDictionaryProvider()
-        self._lookup_service = LookupService(self._provider, self._cache, self._settings)
-        self._save_service = SaveService(
-            self._settings,
-            duplicate_prompt=lambda existing, candidate: prompt_duplicate(
-                existing, candidate, parent=self
-            ),
-        )
-        self._export_service = ExportService(self._settings, self._cache)
-        self._anki_sync = AnkiSyncService(self._settings)
-        self._export_ctrl = ExportController(
-            self, self._settings, self._export_service
-        )
+        with self._startup_perf.span("services"):
+            self._provider: DictionaryProvider = self._build_provider()
+            self._ocr_provider: OcrProvider = self._build_ocr_provider()
+            self._manual_provider = ManualDictionaryProvider()
+            self._lookup_service = LookupService(self._provider, self._cache, self._settings)
+            self._save_service = SaveService(
+                self._settings,
+                duplicate_prompt=lambda existing, candidate: prompt_duplicate(
+                    existing, candidate, parent=self
+                ),
+            )
+            self._export_service = ExportService(self._settings, self._cache)
+            self._anki_sync = AnkiSyncService(self._settings)
+            self._export_ctrl = ExportController(
+                self, self._settings, self._export_service, self._settings_store
+            )
+            self._export_ctrl.settingsRequested.connect(self._open_settings)
 
         self._worker_thread: QtCore.QThread | None = None
         self._current_worker: LookupWorker | None = None
         self._ocr_thread: QtCore.QThread | None = None
         self._ocr_worker: OcrWorker | None = None
+        self._saved_words_thread: QtCore.QThread | None = None
+        self._saved_words_worker: SavedWordsWorker | None = None
+        self._saved_words_started: float | None = None
         self._ocr_temp_path: Path | None = None
+        self._browser_prewarm_started = False
         self._lookup_queue: list[LookupJob] = []
         self._active_job: LookupJob | None = None
         self._lookup_queue_total = 0
@@ -89,7 +101,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._queue_timer.timeout.connect(self._start_next_queued_lookup)
         self._wordbook_sort_option = "최신순"
 
-        self._build_ui()
+        with self._startup_perf.span("build_ui"):
+            self._build_ui()
         # Controllers that need widgets (input_view, status bar) must be
         # built after _build_ui so we can pass live references.
         self._wordbook_ctrl = WordbookController(
@@ -101,13 +114,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status,
         )
         self._build_menu()
-        self._refresh_recent()
+        with self._startup_perf.span("recent_refresh"):
+            self._refresh_recent()
         self._refresh_status_summary()
-        ocr_temp_files.cleanup_temp_dir()
 
-        # Warm up the headless browser in the background so the first
-        # lookup doesn't pay the full Playwright startup cost.
-        QtCore.QTimer.singleShot(50, self._prewarm_browser)
+        QtCore.QTimer.singleShot(0, lambda: self._startup_perf.mark("first_paint"))
+        self._schedule_idle_startup_tasks()
 
     # ---------- UI scaffolding -------------------------------------
 
@@ -138,6 +150,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_view.clipboardImagePasted.connect(self._start_ocr_for_clipboard_image)
         self.input_view.ocrProviderChanged.connect(self._on_ocr_provider_changed)
         self.input_view.ocrCleared.connect(self._cleanup_current_ocr_temp)
+        if hasattr(self.input_view, "prewarmRequested"):
+            self.input_view.prewarmRequested.connect(self._prewarm_browser)
         self.input_view.set_ocr_provider_label(self._settings.ocr_provider)
 
         input_scroll = QtWidgets.QScrollArea()
@@ -211,15 +225,63 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------- helpers --------------------------------------------
 
+    def _schedule_idle_startup_tasks(self) -> None:
+        QtCore.QTimer.singleShot(300, self._start_saved_words_cache_load)
+        QtCore.QTimer.singleShot(1200, self._cleanup_ocr_temp_dir_idle)
+        # Delay browser startup until the first paint and early interactions
+        # have settled. First focus/typing still triggers this immediately.
+        QtCore.QTimer.singleShot(2500, self._prewarm_browser)
+
+    def _start_saved_words_cache_load(self) -> None:
+        if (
+            self._saved_words_thread is not None
+            and self._saved_words_thread.isRunning()
+        ):
+            return
+        thread = QtCore.QThread(self)
+        worker = SavedWordsWorker(self._settings)
+        worker.moveToThread(thread)
+        self._saved_words_started = time.perf_counter()
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_saved_words_cache_ready)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_saved_words_worker_refs)
+        self._saved_words_thread = thread
+        self._saved_words_worker = worker
+        thread.start()
+
+    @QtCore.Slot(object)
+    def _on_saved_words_cache_ready(self, saved_words: object) -> None:
+        if isinstance(saved_words, set):
+            self._wordbook_ctrl.set_saved_words_cache(saved_words)
+            self._refresh_recent()
+            self._startup_perf.mark("saved_words_cache", start=self._saved_words_started)
+
+    @QtCore.Slot()
+    def _clear_saved_words_worker_refs(self) -> None:
+        self._saved_words_thread = None
+        self._saved_words_worker = None
+        self._saved_words_started = None
+
+    def _cleanup_ocr_temp_dir_idle(self) -> None:
+        with self._startup_perf.span("ocr_temp_cleanup"):
+            ocr_temp_files.cleanup_temp_dir()
+
     def _prewarm_browser(self) -> None:
         """Start Playwright in the background so the first user lookup
         doesn't include the ~2 second browser launch cost."""
+        if self._browser_prewarm_started:
+            return
         if not isinstance(self._provider, NaverDictionaryCrawlerProvider):
             return
+        self._browser_prewarm_started = True
 
         def warm():
             try:
-                self._provider.client.start()  # type: ignore[union-attr]
+                with self._startup_perf.span("playwright_prewarm"):
+                    self._provider.client.start()  # type: ignore[union-attr]
                 log.info("playwright pre-warmed")
             except Exception as exc:
                 log.warning("pre-warm failed: %s", exc)
@@ -576,8 +638,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._abort_lookup_queue()
             return
 
-        # update wordbook controller cache
-        self._wordbook_ctrl.update_saved_words_cache()
+        self._start_saved_words_cache_load()
 
         self.status.showMessage(f"저장됨 ({outcome.status}) → {outcome.path}")
         self._return_to_input()
@@ -709,6 +770,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._export_service = ExportService(settings, self._cache)
         self._export_ctrl.update_settings(settings, self._export_service)
         self._wordbook_ctrl.update_settings(settings, self._anki_sync)
+        self._start_saved_words_cache_load()
         if isinstance(self._provider, NaverDictionaryCrawlerProvider):
             self._provider.client.update_delay(settings.request_delay_seconds)
         self._refresh_status_summary()
@@ -729,6 +791,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _show_wordbook_inline(self, language: str) -> None:
         self._wordbook_ctrl.show_inline(language, self._wordbook_sort_option)
+        self.input_view.set_anki_export_status(
+            export_status_summary(self._settings, language)
+        )
 
     @QtCore.Slot(str, object)
     def _delete_wordbook_entries(self, language: str, words_obj: object) -> None:
@@ -762,7 +827,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(str, int)
     def _on_words_deleted(self, language: str, count: int) -> None:
-        self._wordbook_ctrl.update_saved_words_cache()
+        self._start_saved_words_cache_load()
         self._refresh_recent()
         self.status.showMessage(f"{language} {count}개 삭제됨 (Excel)")
 
@@ -892,8 +957,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _export_tsv(self, language: str) -> None:
         self._export_ctrl.export_tsv(language)
 
-    def _export_apkg(self, language: str) -> None:
-        self._export_ctrl.export_apkg(language)
+    def _export_apkg(
+        self,
+        language: str,
+        audio_policy: str = "settings",
+        force_options: bool = False,
+    ) -> None:
+        self._export_ctrl.export_apkg(language, audio_policy, force_options)  # type: ignore[arg-type]
 
     # ---------- lifecycle -----------------------------------------
 
@@ -930,6 +1000,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._ocr_thread.wait(2000)
         except Exception as exc:
             log.warning("ocr thread cleanup failed: %s", exc)
+        try:
+            if (
+                self._saved_words_thread is not None
+                and self._saved_words_thread.isRunning()
+            ):
+                self._saved_words_thread.quit()
+                self._saved_words_thread.wait(2000)
+        except Exception as exc:
+            log.warning("saved words thread cleanup failed: %s", exc)
         self._cleanup_current_ocr_temp()
         ocr_temp_files.cleanup_temp_dir()
         try:

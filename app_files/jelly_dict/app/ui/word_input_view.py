@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from app.ui.widgets.anki_export_button import AnkiExportButton
 from app.ui.widgets.language_menu_item import LanguageMenuItem
 from app.ui.widgets.wordbook_row import WordbookRow, wordbook_tooltip
 
@@ -136,13 +137,14 @@ class WordInputView(QtWidgets.QWidget):
     openSettingsRequested = QtCore.Signal()
     recentEntryRequested = QtCore.Signal(str, str)
     wordbookDeleteRequested = QtCore.Signal(str, object)
-    wordbookExportRequested = QtCore.Signal(str)
+    wordbookExportRequested = QtCore.Signal(str, str, bool)
     imageOpenRequested = QtCore.Signal()
     imageDropped = QtCore.Signal(str)
     clipboardImagePasted = QtCore.Signal(object)
     ocrTokenSelected = QtCore.Signal(str)
     ocrProviderChanged = QtCore.Signal(str)  # "apple_vision" | "google_vision"
     ocrCleared = QtCore.Signal()
+    prewarmRequested = QtCore.Signal()
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -458,17 +460,8 @@ class WordInputView(QtWidgets.QWidget):
         self.clear_recent_btn.setObjectName("ghostButton")
         self.clear_recent_btn.setToolTip("Excel/캐시는 유지, 표시만 지움")
         recent_header.addWidget(self.clear_recent_btn)
-        self.wordbook_export_btn = QtWidgets.QPushButton("Anki 내보내기")
-        self.wordbook_export_btn.setObjectName("wordbookExportButton")
-        self.wordbook_export_btn.setIcon(_resource_icon("anki_mark.svg"))
-        self.wordbook_export_btn.setIconSize(QtCore.QSize(20, 20))
+        self.wordbook_export_btn = AnkiExportButton()
         self.wordbook_export_btn.setVisible(False)
-        self.wordbook_export_btn.setToolTip("현재 단어장을 Anki APKG로 내보내기")
-        self._hover_icons[self.wordbook_export_btn] = (
-            _resource_icon("anki_mark.svg"),
-            _resource_icon("anki_mark_active.svg"),
-        )
-        self.wordbook_export_btn.installEventFilter(self)
         recent_header.addWidget(self.wordbook_export_btn)
         self.wordbook_delete_btn = QtWidgets.QPushButton("선택 삭제")
         self.wordbook_delete_btn.setObjectName("wordbookDeleteButton")
@@ -526,7 +519,9 @@ class WordInputView(QtWidgets.QWidget):
         self.recent_list.itemDoubleClicked.connect(self._open_recent_entry)
         self.recent_list.itemSelectionChanged.connect(self._on_list_selection_changed)
         self.clear_recent_btn.clicked.connect(self.clearRecentRequested.emit)
-        self.wordbook_export_btn.clicked.connect(self._request_wordbook_export)
+        self.wordbook_export_btn.exportRequested.connect(self.wordbookExportRequested.emit)
+        self.wordbook_export_btn.settingsRequested.connect(self.openSettingsRequested.emit)
+        self.input.textEdited.connect(lambda _text: self.prewarmRequested.emit())
         self.wordbook_delete_btn.clicked.connect(self._request_wordbook_delete)
         self.wordbook_expand_btn.clicked.connect(self._toggle_wordbook_expanded)
         # Restart the debounce timer on every keystroke; final render
@@ -1085,6 +1080,7 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_sort_btn.setVisible(True)
         self.clear_recent_btn.setVisible(False)
         self.wordbook_export_btn.setVisible(True)
+        self.wordbook_export_btn.set_language(language)
         self.wordbook_delete_btn.setVisible(True)
         self.wordbook_search.setVisible(True)
         self.wordbook_search.setMaximumHeight(16777215)
@@ -1219,10 +1215,13 @@ class WordInputView(QtWidgets.QWidget):
     def _request_wordbook_export(self) -> None:
         if self._list_mode not in ("en", "ja"):
             return
-        self.wordbookExportRequested.emit(self._list_mode)
+        self.wordbookExportRequested.emit(self._list_mode, "settings", False)
 
     def set_status_summary(self, text: str) -> None:
         self.status_summary.setText(text)
+
+    def set_anki_export_status(self, text: str) -> None:
+        self.wordbook_export_btn.set_status_text(text)
 
     def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
         if self._first_image_path(event.mimeData()) is not None:
@@ -1245,6 +1244,11 @@ class WordInputView(QtWidgets.QWidget):
                 watched.setIcon(active_icon)
             elif event.type() == QtCore.QEvent.Leave:
                 watched.setIcon(normal_icon)
+        if watched is self.input and event.type() in (
+            QtCore.QEvent.FocusIn,
+            QtCore.QEvent.KeyPress,
+        ):
+            self.prewarmRequested.emit()
         if watched is self.input and event.type() == QtCore.QEvent.KeyPress:
             key_event = event
             if isinstance(key_event, QtGui.QKeyEvent) and key_event.matches(

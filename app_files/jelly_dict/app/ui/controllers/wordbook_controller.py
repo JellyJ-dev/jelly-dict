@@ -40,12 +40,13 @@ class WordbookController:
         self._status = status_bar
         self._saved_words: set[tuple[str, str]] = set()
         self._current_sort_option = "최신순"
-        self.update_saved_words_cache()
 
     def update_settings(self, settings: Settings, anki_sync: AnkiSyncService) -> None:
         self._settings = settings
         self._anki_sync = anki_sync
-        self.update_saved_words_cache()
+
+    def set_saved_words_cache(self, saved_words: set[tuple[str, str]]) -> None:
+        self._saved_words = set(saved_words)
 
     # ---------- inline rendering ---------------------------------------
 
@@ -152,8 +153,10 @@ class WordbookController:
         if self._anki_sync.enabled:
             anki_removed, anki_errors = self._anki_sync.delete_words(words)
 
-        # Re-render the inline wordbook with the updated dataset.
-        self.update_saved_words_cache()
+        # Keep the saved-word index current without re-reading both Excel
+        # files on the UI thread; the visible wordbook list below reads only
+        # the active workbook because the user is already in that view.
+        self._saved_words.difference_update((language, key) for key in keys)
         self.show_inline(language, self._current_sort_option)
         message = (
             f"{'일본어' if language == 'ja' else '영어'} 단어장 {removed}개 삭제됨"

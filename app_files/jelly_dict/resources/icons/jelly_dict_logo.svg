@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="24" fill="#1b1b1a"/>
+
+  <!-- jelly dict mark: strict pixel silhouette, app palette only -->
+  <g shape-rendering="crispEdges">
+    <!-- body -->
+    <path fill="#e8744f" d="
+      M44 28h40v12h16v12h12v20h-12v12H84v16H72V84H56v16H44V84H28V72H16V52h12V40h16V28z
+    "/>
+
+    <!-- tiny book/page cue, kept secondary so the mark still reads as a mascot -->
+    <path fill="#bf5f43" d="M52 76h24v8H52z"/>
+
+    <!-- eyes -->
+    <path fill="#1b1b1a" d="M48 48h8v16h-8zM80 48h8v16h-8z"/>
+  </g>
+</svg>

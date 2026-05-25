@@ -291,6 +291,63 @@ QPushButton#wordbookExportButton:hover {
     border-color: #e8744f;
     background: #282826;
 }
+QPushButton#wordbookExportOptionButton {
+    background: transparent;
+    color: #d4cec4;
+    border: 1px solid #454542;
+    border-radius: 7px;
+    padding: 3px 0;
+    min-height: 28px;
+    max-height: 28px;
+    min-width: 28px;
+    max-width: 28px;
+    font-size: 18px;
+    font-weight: 800;
+}
+QPushButton#wordbookExportOptionButton:hover {
+    color: #e7e1d6;
+    border-color: #6a6963;
+    background: #282826;
+}
+QFrame#ankiExportPopup {
+    background: #242422;
+    border: 1px solid #454542;
+    border-radius: 8px;
+}
+QLabel#ankiExportPopupStatus {
+    color: #aaa59c;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px 6px;
+}
+QPushButton#ankiExportPopupItem,
+QPushButton#ankiExportPopupWarning {
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    color: #d4cec4;
+    padding: 0 10px;
+    min-height: 26px;
+    max-height: 26px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+}
+QPushButton#ankiExportPopupWarning {
+    color: #f0c08a;
+}
+QPushButton#ankiExportPopupItem:hover,
+QPushButton#ankiExportPopupWarning:hover {
+    color: #e8744f;
+    background: #30302d;
+}
+QFrame#ankiExportPopupSeparator {
+    color: #3a3a37;
+    background: #3a3a37;
+    min-height: 1px;
+    max-height: 1px;
+    margin: 3px 4px;
+}
 QPushButton#wordbookDeleteButton:disabled {
     color: #6f6b64;
     border-color: #383835;
@@ -525,6 +582,48 @@ QLabel#settingsStatus {
     color: #aaa59c;
     font-size: 12px;
     font-weight: 600;
+}
+QLabel#exportDialogTitle {
+    color: #e7e1d6;
+    font-size: 16px;
+    font-weight: 800;
+}
+QLabel#exportDialogSubtitle {
+    color: #aaa59c;
+    font-size: 12px;
+    font-weight: 700;
+}
+QLabel#exportFormLabel {
+    color: #aaa59c;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 48px;
+    min-height: 28px;
+}
+QLabel#exportMetaValue {
+    color: #e7e1d6;
+    font-size: 13px;
+    font-weight: 700;
+    min-height: 28px;
+}
+QLabel#exportStatusBlock {
+    background: #20201f;
+    color: #d4cec4;
+    border: 1px solid #343431;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.35;
+}
+QLabel#exportWarningBlock {
+    background: #29231f;
+    color: #f0c08a;
+    border: 1px solid #5a4638;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 12px;
+    font-weight: 700;
 }
 QTabWidget#settingsTabs::pane {
     border: 1px solid #3f3f3c;

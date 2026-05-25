@@ -77,6 +77,12 @@ class Settings:
         "16:九州そら (ノーマル)",
     ])
 
+    # Anki export UX — keep normal exports one-click while allowing smart
+    # checks when audio state changes or an engine looks unavailable.
+    anki_export_confirm_mode: str = "smart"  # smart | always | never
+    last_apkg_export_tts_enabled: bool | None = None
+    last_apkg_export_audio_policy: str = "settings"
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 

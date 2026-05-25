@@ -28,9 +28,16 @@ class ExportService:
         self._settings = settings
         self._cache = cache
 
+    @property
+    def cache(self) -> cache_store.CacheStore:
+        return self._cache
+
     def export_tsv(self, output_path: Path, language: str, deck_name: str | None = None) -> int:
         entries = list(self._collect_entries(language))
         return tsv_exporter.export_tsv(output_path, entries)
+
+    def count_entries(self, language: str) -> int:
+        return len(self._collect_entries(language))
 
     def export_apkg(
         self,
