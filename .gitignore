@@ -23,6 +23,8 @@ build/
 dist/
 **/build/
 **/dist/
+*.app/
+*.dmg
 
 *.xlsx
 *.xls

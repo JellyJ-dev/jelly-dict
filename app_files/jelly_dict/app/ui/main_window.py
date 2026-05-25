@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -35,7 +36,6 @@ from app.ui.entry_detail_dialog import EntryDetailDialog
 from app.ui.lookup_worker import LookupWorker
 from app.ui.ocr_worker import OcrWorker
 from app.ui.preview_editor_view import PreviewEditorView
-from app.ui.saved_words_worker import SavedWordsWorker
 from app.ui.settings_view import SettingsDialog
 from app.ui.startup_perf import StartupPerf
 from app.ui.word_input_view import WordInputView
@@ -87,8 +87,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_worker: LookupWorker | None = None
         self._ocr_thread: QtCore.QThread | None = None
         self._ocr_worker: OcrWorker | None = None
-        self._saved_words_thread: QtCore.QThread | None = None
-        self._saved_words_worker: SavedWordsWorker | None = None
         self._saved_words_started: float | None = None
         self._ocr_temp_path: Path | None = None
         self._browser_prewarm_started = False
@@ -233,24 +231,19 @@ class MainWindow(QtWidgets.QMainWindow):
         QtCore.QTimer.singleShot(2500, self._prewarm_browser)
 
     def _start_saved_words_cache_load(self) -> None:
-        if (
-            self._saved_words_thread is not None
-            and self._saved_words_thread.isRunning()
-        ):
-            return
-        thread = QtCore.QThread(self)
-        worker = SavedWordsWorker(self._settings)
-        worker.moveToThread(thread)
         self._saved_words_started = time.perf_counter()
-        thread.started.connect(worker.run)
-        worker.finished.connect(self._on_saved_words_cache_ready)
-        worker.finished.connect(thread.quit)
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(self._clear_saved_words_worker_refs)
-        self._saved_words_thread = thread
-        self._saved_words_worker = worker
-        thread.start()
+        saved: set[tuple[str, str]] = set()
+        for lang in ("en", "ja"):
+            path = Path(self._settings.excel_path_for(lang))
+            if not path.exists():
+                continue
+            try:
+                for entry in excel_writer.list_entries(path):
+                    if entry.language == lang and (entry.word or "").strip():
+                        saved.add((lang, normalize_word_key(entry.word, lang)))
+            except Exception as exc:
+                log.warning("saved words cache load failed from %s: %s", path, exc)
+        self._on_saved_words_cache_ready(saved)
 
     @QtCore.Slot(object)
     def _on_saved_words_cache_ready(self, saved_words: object) -> None:
@@ -258,11 +251,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self._wordbook_ctrl.set_saved_words_cache(saved_words)
             self._refresh_recent()
             self._startup_perf.mark("saved_words_cache", start=self._saved_words_started)
-
-    @QtCore.Slot()
-    def _clear_saved_words_worker_refs(self) -> None:
-        self._saved_words_thread = None
-        self._saved_words_worker = None
         self._saved_words_started = None
 
     def _cleanup_ocr_temp_dir_idle(self) -> None:
@@ -286,18 +274,7 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception as exc:
                 log.warning("pre-warm failed: %s", exc)
 
-        thread = QtCore.QThread(self)
-        worker = QtCore.QObject()
-        worker.moveToThread(thread)
-
-        def _on_started():
-            warm()
-            thread.quit()
-
-        thread.started.connect(_on_started)
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        thread.start()
+        threading.Thread(target=warm, name="jelly-dict-prewarm", daemon=True).start()
 
     def _build_provider(self) -> DictionaryProvider:
         if self._settings.provider == "naver_crawler":
@@ -1000,15 +977,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._ocr_thread.wait(2000)
         except Exception as exc:
             log.warning("ocr thread cleanup failed: %s", exc)
-        try:
-            if (
-                self._saved_words_thread is not None
-                and self._saved_words_thread.isRunning()
-            ):
-                self._saved_words_thread.quit()
-                self._saved_words_thread.wait(2000)
-        except Exception as exc:
-            log.warning("saved words thread cleanup failed: %s", exc)
         self._cleanup_current_ocr_temp()
         ocr_temp_files.cleanup_temp_dir()
         try:

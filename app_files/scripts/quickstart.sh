@@ -407,7 +407,7 @@ if missing:
     sys.exit(1)
 
 checks = [
-    ("PySide6", "PySide6", (6, 7), (7, 0), ">=6.7,<7"),
+    ("PySide6", "PySide6", (6, 7), (6, 11), ">=6.7,<6.11"),
     ("openpyxl", "openpyxl", (3, 1), None, ">=3.1"),
     ("beautifulsoup4", "bs4", (4, 12), None, ">=4.12"),
     ("lxml", "lxml", (5, 0), None, ">=5.0"),
@@ -473,7 +473,7 @@ install_requirements_or_explain() {
 필수 패키지 설치에 실패했습니다.
 
 PySide6는 Python 버전별 macOS wheel 제공 여부의 영향을 받습니다.
-이 앱은 PySide6 >=6.7,<7 범위를 사용하며, 너무 최신 Python (3.14+)
+이 앱은 PySide6 >=6.7,<6.11 범위를 사용하며, 너무 최신 Python (3.14+)
 에서는 아직 맞는 PySide6 배포 파일이 없을 수 있습니다.
 
 Homebrew 기본 Python이 3.14+ 인 경우 PySide6 호환 버전을 설치하세요:

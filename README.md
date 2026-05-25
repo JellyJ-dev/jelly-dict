@@ -6,8 +6,7 @@
 
 조회한 단어는 Excel 파일에 저장되며, Anki 내보내기도 이 Excel 단어장을 기준으로 생성됩니다.
 
-> 현재 공식 `.app` 또는 `.dmg` 배포는 제공하지 않습니다.  
-> GitHub 저장소를 다운로드하거나 clone한 뒤, 포함된 `.command` 스크립트로 초기 설정과 실행을 진행합니다.
+GitHub 저장소를 다운로드하거나 clone한 뒤, 포함된 installer를 더블클릭하면 개인용 macOS 앱 번들이 생성됩니다.
 
 ---
 
@@ -33,7 +32,7 @@
 
 Windows와 Linux는 공식 지원 대상이 아닙니다.
 
-Quick Start는 `PySide6>=6.7,<7` 범위에서 현재 Python에 맞는 Qt 패키지를 설치합니다. PySide6 6.x 시리즈는 Python 3.13까지 macOS wheel을 제공합니다. Homebrew 기본 Python이 3.14 이상이면 `No matching distribution found for PySide6` 로 설치가 실패할 수 있으니, 다음과 같이 호환 버전을 설치한 뒤 다시 실행하세요:
+Quick Start는 `PySide6>=6.7,<6.11` 범위에서 현재 Python에 맞는 Qt 패키지를 설치합니다. PySide6 6.x 시리즈는 Python 3.13까지 macOS wheel을 제공합니다. Homebrew 기본 Python이 3.14 이상이면 `No matching distribution found for PySide6` 로 설치가 실패할 수 있으니, 다음과 같이 호환 버전을 설치한 뒤 다시 실행하세요:
 
 ```bash
 brew install python@3.13       # 권장
@@ -54,26 +53,62 @@ JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.13 ./Quick\ Start.command
 처음 사용하는 경우, Finder에서 아래 파일을 더블클릭하세요.
 
 ```text
-Quick Start.command
+Install jelly dict.command
 ```
 
-설치가 끝난 뒤 다시 실행만 하고 싶다면 아래 파일을 사용하세요.
+설치가 끝나면 아래 앱을 일반 macOS 앱처럼 실행하세요.
 
 ```text
-Run jelly dict.command
+~/Applications/Jelly Dict.app
 ```
 
-macOS가 처음 실행 때 보안 경고를 띄우면 파일을 **우클릭 -> 열기**로 실행하세요.
+installer 마지막 단계에서 `~/Applications`에 복사하지 않았다면 repo 안의 아래 앱을 실행할 수도 있습니다.
+
+```text
+app_files/dist/Jelly Dict.app
+```
+
+macOS가 처음 실행 때 보안 경고를 띄우면 파일 또는 앱을 **우클릭 -> 열기**로 실행하세요.
+
+repo 폴더 위치를 옮기면 `Jelly Dict.app` 안에 저장된 원본 경로가 맞지 않게 됩니다. 이 경우 `Install jelly dict.command`를 다시 실행해 앱을 새로 만들면 됩니다.
 
 ---
 
-## 왜 Quick Start.command로 실행해야 하나요?
+## 설치 흐름
+
+`Install jelly dict.command`는 다음 순서로 진행됩니다.
+
+1. repo 위치와 파일 구조를 확인합니다.
+2. 기존 Quick Start 설치/점검을 실행합니다.
+3. `app_files/dist/Jelly Dict.app`을 생성합니다.
+4. `~/Applications`에 복사할지 묻습니다.
+5. 완료 후 앱을 바로 실행할지 묻습니다.
+
+생성된 `.app`은 내부에 앱 코드를 복사하지 않고, 원본 repo 경로를 저장한 뒤 기존 Quick Start와 Run 스크립트를 감싸서 실행합니다.
+
+---
+
+## 개발자용 실행
 
 jelly dict는 Python 패키지, Playwright WebKit, macOS 권한, 가상환경 상태에 영향을 받습니다.
 
-따라서 일반 사용자는 터미널에서 직접 설치하거나 직접 실행하지 않고, 저장소에 포함된 `.command` 스크립트를 사용하는 방식을 권장합니다.
+일반 사용자는 `Install jelly dict.command`로 `.app`을 만든 뒤 실행하는 방식을 권장합니다.
+
+개발자는 필요하면 아래 파일을 직접 사용할 수 있습니다.
+
+```text
+Quick Start.command
+Run jelly dict.command
+```
 
 수동 설치나 직접 실행은 문제 해결 범위에 포함하지 않습니다.
+
+문제가 생기면 아래 로그를 먼저 확인하세요.
+
+```text
+app_files/jelly_dict/.jelly_dict/logs/quickstart.log
+app_files/jelly_dict/.jelly_dict/logs/launcher.log
+```
 
 ---
 
