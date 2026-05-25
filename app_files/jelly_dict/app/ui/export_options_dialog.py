@@ -90,7 +90,7 @@ class ExportOptionsDialog(QtWidgets.QDialog):
             ("현재 설정 사용", "settings"),
             ("이번만 TTS 포함", "force_tts"),
             ("이번만 TTS 제외", "no_tts"),
-            ("기존 Anki 음성 제거용", "remove_audio"),
+            ("Anki 카드 음성 비우기", "remove_audio"),
         ]:
             self.policy_combo.addItem(label, value)
         idx = self.policy_combo.findData(self._plan.audio_policy)

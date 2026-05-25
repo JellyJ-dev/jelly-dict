@@ -16,6 +16,7 @@ class DuplicateDialog(QtWidgets.QDialog):
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("duplicateDialog")
         self.setWindowTitle("이미 저장된 단어")
         self.setModal(True)
         self.resize(720, 420)
@@ -23,12 +24,15 @@ class DuplicateDialog(QtWidgets.QDialog):
         self._apply_for_session = False
 
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(22, 20, 22, 20)
+        layout.setSpacing(14)
 
         title = QtWidgets.QLabel(f"<b>{existing.word}</b> ({existing.language}) 이미 저장됨")
-        title.setStyleSheet("font-size: 16px;")
+        title.setObjectName("duplicateTitle")
         layout.addWidget(title)
 
         compare = QtWidgets.QHBoxLayout()
+        compare.setSpacing(12)
         compare.addWidget(self._build_card("기존", existing))
         compare.addWidget(self._build_card("새로 조회", candidate))
         layout.addLayout(compare)
@@ -37,6 +41,7 @@ class DuplicateDialog(QtWidgets.QDialog):
         layout.addWidget(self.session_check)
 
         button_row = QtWidgets.QHBoxLayout()
+        button_row.setSpacing(10)
         layout.addLayout(button_row)
 
         for label, policy in [
@@ -46,6 +51,9 @@ class DuplicateDialog(QtWidgets.QDialog):
             ("새 항목으로 추가", "add_as_new"),
         ]:
             btn = QtWidgets.QPushButton(label)
+            btn.setObjectName("duplicateOptionButton")
+            btn.setMinimumHeight(40)
+            btn.setMinimumWidth(128)
             btn.clicked.connect(lambda _=False, p=policy: self._choose(p))
             button_row.addWidget(btn)
 

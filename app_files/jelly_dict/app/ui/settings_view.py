@@ -15,13 +15,48 @@ VOICEVOX_DOWNLOAD_URL = "https://voicevox.hiroshiba.jp/"
 EDGE_TTS_INSTALL_HINT = "pipx install edge-tts"
 
 
+class _SettingsStatusWorker(QtCore.QObject):
+    finished = QtCore.Signal(object)
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        status = {
+            "gv_key_set": False,
+            "kokoro_available": False,
+            "edge_available": False,
+            "brew_available": False,
+            "kokoro_cache_mb": 0.0,
+        }
+        try:
+            status["gv_key_set"] = secret_store.is_set("google_vision_api_key")
+        except Exception:
+            status["gv_key_set"] = False
+        try:
+            from app.anki.tts import get_provider_info
+            from app.ui.tts_install_worker import brew_available, kokoro_model_cache_size
+
+            status["kokoro_available"] = bool(get_provider_info("kokoro").available)
+            status["edge_available"] = bool(get_provider_info("edge").available)
+            status["brew_available"] = bool(brew_available())
+            status["kokoro_cache_mb"] = kokoro_model_cache_size() / 1024 / 1024
+        except Exception:
+            pass
+        self.finished.emit(status)
+
+
 class SettingsDialog(QtWidgets.QDialog):
     settingsChanged = QtCore.Signal(Settings)
 
-    def __init__(self, store: SettingsStore, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(
+        self,
+        store: SettingsStore,
+        parent: QtWidgets.QWidget | None = None,
+        initial_settings: Settings | None = None,
+    ) -> None:
         super().__init__(parent)
         self._store = store
         self.setObjectName("settingsDialog")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.setWindowTitle("설정")
         self.resize(900, 720)
         self.setMinimumWidth(820)
@@ -30,11 +65,14 @@ class SettingsDialog(QtWidgets.QDialog):
         self._sample_thread: QtCore.QThread | None = None
         self._network_test_thread: QtCore.QThread | None = None
         self._network_test_worker: QtCore.QObject | None = None
+        self._status_thread: QtCore.QThread | None = None
+        self._status_worker: _SettingsStatusWorker | None = None
         # Keep TTS provider instances alive across clicks so the heavy
         # KPipeline (~327MB torch.load) is built only once per session.
         self._tts_provider_cache: dict[str, object] = {}
         self._build_ui()
-        self._load(store.load())
+        self._load(initial_settings or store.load())
+        QtCore.QTimer.singleShot(0, self._start_status_probe)
 
     # ── layout ─────────────────────────────────────────────────────
     def _build_ui(self) -> None:
@@ -61,9 +99,11 @@ class SettingsDialog(QtWidgets.QDialog):
         if save_button is not None:
             save_button.setText("저장")
             save_button.setObjectName("settingsPrimaryButton")
+            save_button.setFixedSize(64, 40)
         if cancel_button is not None:
             cancel_button.setText("취소")
             cancel_button.setObjectName("settingsSecondaryButton")
+            cancel_button.setFixedSize(64, 40)
         button_box.accepted.connect(self._save)
         button_box.rejected.connect(self.reject)
         root.addWidget(button_box, 0, QtCore.Qt.AlignRight)
@@ -75,6 +115,7 @@ class SettingsDialog(QtWidgets.QDialog):
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         panel = QtWidgets.QFrame()
         panel.setObjectName("settingsPanel")
+        panel.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         scroll.setWidget(panel)
         # Wrap the form in a vertical layout so it sits at the top-left
         # with empty space below, instead of stretching its rows to fill
@@ -376,7 +417,6 @@ class SettingsDialog(QtWidgets.QDialog):
     # ── engine combos ──────────────────────────────────────────────
     def _populate_engine_combo(self, combo: QtWidgets.QComboBox, language: str) -> None:
         from app.anki.tts import list_provider_classes
-        from app.anki.tts.voicevox_provider import VoicevoxProvider
 
         combo.blockSignals(True)
         combo.clear()
@@ -389,11 +429,6 @@ class SettingsDialog(QtWidgets.QDialog):
             label = info.display_name
             if not info.available:
                 label = f"{label} (미설치)"
-            elif name == "voicevox":
-                # Live probe — shows the user whether the local engine
-                # is actually responsive at 127.0.0.1:50021.
-                running = VoicevoxProvider.is_running()
-                label += " ✓ 가동 중" if running else " ⚠ 엔진 미가동"
             combo.addItem(label, name)
         combo.blockSignals(False)
 
@@ -494,20 +529,33 @@ class SettingsDialog(QtWidgets.QDialog):
     def _refresh_install_status(self) -> None:
         from app.anki.tts import get_provider_info
         from app.ui.tts_install_worker import (
-            brew_available, pipx_available, kokoro_model_cache_size,
+            brew_available, kokoro_model_cache_size,
         )
 
         kokoro = get_provider_info("kokoro")
         edge = get_provider_info("edge")
+        self._apply_install_status(
+            kokoro_available=kokoro.available,
+            edge_available=edge.available,
+            brew_is_available=brew_available(),
+            kokoro_cache_mb=kokoro_model_cache_size() / 1024 / 1024,
+        )
 
-        if kokoro.available:
+    def _apply_install_status(
+        self,
+        *,
+        kokoro_available: bool,
+        edge_available: bool,
+        brew_is_available: bool,
+        kokoro_cache_mb: float,
+    ) -> None:
+        if kokoro_available:
             self.tts_install_btn.setEnabled(False)
             self.tts_install_btn.setText("Kokoro ✓")
             self.kokoro_uninstall_btn.show()
-            cache_mb = kokoro_model_cache_size() / 1024 / 1024
-            if cache_mb > 1:
+            if kokoro_cache_mb > 1:
                 self.kokoro_uninstall_btn.setToolTip(
-                    f"Kokoro 삭제 — 패키지 + 모델 캐시(~{cache_mb:.0f}MB) 정리"
+                    f"Kokoro 삭제 — 패키지 + 모델 캐시(~{kokoro_cache_mb:.0f}MB) 정리"
                 )
         else:
             self.tts_install_btn.setEnabled(True)
@@ -521,9 +569,9 @@ class SettingsDialog(QtWidgets.QDialog):
         # be a brew cask, a manual /Applications drop, or absent), so the
         # uninstall button is always available when brew is around — its
         # worker reports gracefully if there's nothing to uninstall.
-        self.voicevox_uninstall_btn.setVisible(brew_available())
+        self.voicevox_uninstall_btn.setVisible(brew_is_available)
 
-        if edge.available:
+        if edge_available:
             self.edge_install_btn.setEnabled(False)
             self.edge_install_btn.setText("edge-tts ✓")
             self.edge_uninstall_btn.show()
@@ -531,6 +579,7 @@ class SettingsDialog(QtWidgets.QDialog):
             self.edge_install_btn.setEnabled(True)
             self.edge_install_btn.setText("edge-tts 설치")
             self.edge_uninstall_btn.hide()
+        self.tts_install_status.setText("")
 
     # ── load / save ────────────────────────────────────────────────
     def _load(self, settings: Settings) -> None:
@@ -556,7 +605,8 @@ class SettingsDialog(QtWidgets.QDialog):
         idx = self.ocr_combo.findData(getattr(settings, "ocr_provider", "apple_vision"))
         if idx >= 0:
             self.ocr_combo.setCurrentIndex(idx)
-        self._refresh_gv_key_status()
+        self.gv_key_status.setStyleSheet("color: #aaa59c;")
+        self.gv_key_status.setText("키 상태 확인 중…")
 
         self.tts_enabled_check.setChecked(settings.tts_enabled)
         self.tts_play_front_check.setChecked(settings.tts_play_front)
@@ -579,8 +629,40 @@ class SettingsDialog(QtWidgets.QDialog):
         idx = self.tts_voice_ja_combo.findData(settings.tts_voice_ja)
         if idx >= 0:
             self.tts_voice_ja_combo.setCurrentIndex(idx)
-        self._refresh_install_status()
+        self.tts_install_status.setText("설치 상태 확인 중…")
         self._refresh_voice_add_visibility()
+
+    def _start_status_probe(self) -> None:
+        if self._status_thread is not None:
+            return
+        thread = QtCore.QThread(self)
+        worker = _SettingsStatusWorker()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_status_probe_finished)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_status_probe)
+        self._status_thread = thread
+        self._status_worker = worker
+        thread.start()
+
+    @QtCore.Slot(object)
+    def _on_status_probe_finished(self, status_obj: object) -> None:
+        status = status_obj if isinstance(status_obj, dict) else {}
+        self._apply_gv_key_status(bool(status.get("gv_key_set", False)))
+        self._apply_install_status(
+            kokoro_available=bool(status.get("kokoro_available", False)),
+            edge_available=bool(status.get("edge_available", False)),
+            brew_is_available=bool(status.get("brew_available", False)),
+            kokoro_cache_mb=float(status.get("kokoro_cache_mb", 0.0) or 0.0),
+        )
+
+    @QtCore.Slot()
+    def _clear_status_probe(self) -> None:
+        self._status_thread = None
+        self._status_worker = None
 
     def _save(self) -> None:
         if self._is_network_test_running():
@@ -616,6 +698,7 @@ class SettingsDialog(QtWidgets.QDialog):
             tts_voice_ja=ja_voice,
         )
         self.settingsChanged.emit(updated)
+        self._wait_for_status_probe()
         self.accept()
 
     # ── AnkiConnect ────────────────────────────────────────────────
@@ -640,7 +723,10 @@ class SettingsDialog(QtWidgets.QDialog):
 
     # ── Google Vision API key ──────────────────────────────────────
     def _refresh_gv_key_status(self) -> None:
-        if secret_store.is_set("google_vision_api_key"):
+        self._apply_gv_key_status(secret_store.is_set("google_vision_api_key"))
+
+    def _apply_gv_key_status(self, is_set: bool) -> None:
+        if is_set:
             self.gv_key_status.setStyleSheet("color: #2a8;")
             self.gv_key_status.setText("✓ Keychain에 저장됨")
         else:
@@ -729,10 +815,31 @@ class SettingsDialog(QtWidgets.QDialog):
         self.ankiconnect_status.setText("진행 중인 테스트가 끝난 뒤 다시 시도하세요.")
         self.gv_key_status.setText("진행 중인 테스트가 끝난 뒤 다시 시도하세요.")
 
+    def _is_status_probe_running(self) -> bool:
+        if self._status_thread is None:
+            return False
+        try:
+            return self._status_thread.isRunning()
+        except RuntimeError:
+            self._clear_status_probe()
+            return False
+
+    def _wait_for_status_probe(self) -> None:
+        if self._status_thread is None:
+            return
+        try:
+            if self._status_thread.isRunning():
+                self._status_thread.quit()
+                self._status_thread.wait(1200)
+        except RuntimeError:
+            pass
+        self._clear_status_probe()
+
     def reject(self) -> None:
         if self._is_network_test_running():
             self._set_busy_test_message()
             return
+        self._wait_for_status_probe()
         super().reject()
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
@@ -740,6 +847,7 @@ class SettingsDialog(QtWidgets.QDialog):
             self._set_busy_test_message()
             event.ignore()
             return
+        self._wait_for_status_probe()
         super().closeEvent(event)
 
     # ── TTS install / sample / cache ───────────────────────────────
@@ -1085,6 +1193,8 @@ class _VoicevoxVoicePicker(QtWidgets.QDialog):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("settingsDialog")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.setWindowTitle("VOICEVOX 음성 선택")
         self.resize(520, 600)
         self._all_voices = all_voices
@@ -1103,6 +1213,7 @@ class _VoicevoxVoicePicker(QtWidgets.QDialog):
         from app.anki.tts.voicevox_provider import display_label
 
         self.list_widget = QtWidgets.QListWidget()
+        self.list_widget.setObjectName("settingsVoiceList")
         self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         for voice in all_voices:
             item = QtWidgets.QListWidgetItem(display_label(voice))

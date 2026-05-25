@@ -3,8 +3,7 @@
 #   scripts/cleanup.sh --sandbox        # venv + setup markers (safe)
 #   scripts/cleanup.sh --data           # also wipe runtime data (.jelly_dict)
 #   scripts/cleanup.sh --playwright     # also wipe Playwright browser cache
-#   scripts/cleanup.sh --user-data      # also delete ~/Documents/jelly-dict
-#   scripts/cleanup.sh --all            # everything above
+#   scripts/cleanup.sh --all            # sandbox + runtime data + Playwright cache
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -12,23 +11,22 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 APP_DIR="${REPO_ROOT}/jelly_dict"
 VENV_DIR="${APP_DIR}/.venv"
 RUNTIME_DIR="${APP_DIR}/.jelly_dict"
-USER_DATA_DIR="${HOME}/Documents/jelly-dict"
 PLAYWRIGHT_CACHE="${HOME}/Library/Caches/ms-playwright"
 
 WIPE_SANDBOX=0
 WIPE_DATA=0
 WIPE_PLAYWRIGHT=0
-WIPE_USER=0
 
 usage() {
   cat <<'USAGE'
-Usage: cleanup.sh [--sandbox] [--data] [--playwright] [--user-data] [--all]
+Usage: cleanup.sh [--sandbox] [--data] [--playwright] [--all]
 
   --sandbox      Remove .venv and setup markers (safe, reinstallable).
   --data         Also remove runtime data (.jelly_dict): settings, cache, logs.
   --playwright   Also remove Playwright browser cache (~/Library/Caches/ms-playwright).
-  --user-data    Also delete the user's vocab/Anki files at ~/Documents/jelly-dict.
-  --all          Equivalent to --sandbox --data --playwright --user-data.
+  --all          Equivalent to --sandbox --data --playwright.
+
+User vocab/Anki files at ~/Documents/jelly-dict are never removed by this script.
 USAGE
 }
 
@@ -37,15 +35,14 @@ while [[ $# -gt 0 ]]; do
     --sandbox)    WIPE_SANDBOX=1 ;;
     --data)       WIPE_SANDBOX=1; WIPE_DATA=1 ;;
     --playwright) WIPE_PLAYWRIGHT=1 ;;
-    --user-data)  WIPE_USER=1 ;;
-    --all)        WIPE_SANDBOX=1; WIPE_DATA=1; WIPE_PLAYWRIGHT=1; WIPE_USER=1 ;;
+    --all)        WIPE_SANDBOX=1; WIPE_DATA=1; WIPE_PLAYWRIGHT=1 ;;
     -h|--help)    usage; exit 0 ;;
     *)            echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
 
-if (( WIPE_SANDBOX == 0 && WIPE_DATA == 0 && WIPE_PLAYWRIGHT == 0 && WIPE_USER == 0 )); then
+if (( WIPE_SANDBOX == 0 && WIPE_DATA == 0 && WIPE_PLAYWRIGHT == 0 )); then
   usage >&2
   exit 2
 fi
@@ -75,10 +72,6 @@ fi
 
 if (( WIPE_PLAYWRIGHT )); then
   remove_path "Playwright browser cache" "${PLAYWRIGHT_CACHE}"
-fi
-
-if (( WIPE_USER )); then
-  remove_path "user vocab/Anki files" "${USER_DATA_DIR}"
 fi
 
 echo "done."

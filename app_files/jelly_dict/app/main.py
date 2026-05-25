@@ -30,7 +30,7 @@ def _quickstart_completed() -> bool:
 def _print_quickstart_required() -> None:
     print(
         "jelly dict 초기 설정이 완료되지 않았습니다.\n"
-        "프로젝트 맨 위의 'Quick Start.command'를 먼저 실행하세요.\n"
+        "프로젝트 맨 위의 'Install jelly dict.command'를 먼저 실행하세요.\n"
         "수동 설치/직접 실행은 지원하지 않습니다.",
         file=sys.stderr,
     )

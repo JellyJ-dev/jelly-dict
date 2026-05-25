@@ -21,6 +21,7 @@ class LanguageMenuItem(QtWidgets.QFrame):
         self.setObjectName("languageMenuItem")
         self.setCursor(QtCore.Qt.PointingHandCursor)
         self._selected = False
+        self.setMinimumWidth(340)
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(12, 7, 10, 7)
         layout.setSpacing(8)
@@ -49,4 +50,8 @@ class LanguageMenuItem(QtWidgets.QFrame):
 
     def set_selected(self, selected: bool) -> None:
         self._selected = selected
+        self.setProperty("selected", selected)
         self.check.setVisible(selected)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()

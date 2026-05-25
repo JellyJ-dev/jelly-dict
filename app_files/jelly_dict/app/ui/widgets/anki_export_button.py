@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
+import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
-
-RESOURCE_DIR = Path(__file__).resolve().parents[3] / "resources"
-
-
-def _resource_icon(name: str) -> QtGui.QIcon:
-    return QtGui.QIcon(str(RESOURCE_DIR / "icons" / name))
 
 
 class _ExportPopup(QtWidgets.QFrame):
@@ -18,12 +12,23 @@ class _ExportPopup(QtWidgets.QFrame):
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent, QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
-        self.setObjectName("ankiExportPopup")
-        self.setFixedWidth(260)
+        self.setObjectName("ankiExportPopupWindow")
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setFixedWidth(276)
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(7, 7, 7, 7)
-        layout.setSpacing(3)
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self.panel = QtWidgets.QFrame()
+        self.panel.setObjectName("ankiExportPopup")
+        self.panel.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        root.addWidget(self.panel)
+
+        layout = QtWidgets.QVBoxLayout(self.panel)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
 
         self.status = QtWidgets.QLabel("현재 설정")
         self.status.setObjectName("ankiExportPopupStatus")
@@ -34,7 +39,7 @@ class _ExportPopup(QtWidgets.QFrame):
         layout.addWidget(self._separator())
         layout.addWidget(self._row("이번만 TTS 포함", "force_tts", False))
         layout.addWidget(self._row("이번만 TTS 없이", "no_tts", False))
-        layout.addWidget(self._row("기존 Anki 음성 제거용", "remove_audio", True, "warning"))
+        layout.addWidget(self._row("Anki 카드 음성 비우기", "remove_audio", True))
         layout.addWidget(self._separator())
 
         settings = QtWidgets.QPushButton("Anki / TTS 설정")
@@ -87,6 +92,82 @@ class _ExportPopup(QtWidgets.QFrame):
         self.settingsRequested.emit()
 
 
+class _AnkiMainButton(QtWidgets.QAbstractButton):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setFixedSize(134, 34)
+        self.setText("Anki 내보내기")
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        del event
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        active = self.isDown() or self.underMouse()
+        color = QtGui.QColor("#e8744f") if active else QtGui.QColor("#d4cec4")
+        if active:
+            painter.setBrush(QtGui.QColor("#282826"))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawRoundedRect(QtCore.QRectF(0.5, 0.5, self.width() - 1, self.height() - 1), 11, 11)
+
+        font = QtGui.QFont(self.font())
+        font.setPixelSize(13)
+        font.setWeight(QtGui.QFont.Weight.Bold)
+        painter.setFont(font)
+        metrics = QtGui.QFontMetricsF(font)
+        text = self.text()
+        text_width = math.ceil(metrics.horizontalAdvance(text))
+        icon_size = 17.0
+        gap = 8.0
+        total_width = icon_size + gap + text_width
+        left = round((self.width() - total_width) / 2)
+        center_y = round(self.height() / 2)
+
+        _draw_star(
+            painter,
+            QtCore.QPointF(left + icon_size / 2, center_y),
+            7.7,
+            color,
+        )
+        text_bounds = metrics.tightBoundingRect(text)
+        baseline = center_y - (text_bounds.top() + text_bounds.bottom()) / 2
+        painter.setPen(color)
+        painter.drawText(QtCore.QPointF(left + icon_size + gap, baseline), text)
+        painter.end()
+
+
+class _AnkiOptionButton(QtWidgets.QAbstractButton):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setFixedSize(38, 34)
+        self.setToolTip("Anki 내보내기 옵션")
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        del event
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        active = self.isDown() or self.underMouse()
+        color = QtGui.QColor("#e8744f") if active else QtGui.QColor("#d4cec4")
+        if active:
+            painter.setBrush(QtGui.QColor("#282826"))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawRoundedRect(QtCore.QRectF(0.5, 0.5, self.width() - 1, self.height() - 1), 11, 11)
+
+        painter.setBrush(color)
+        painter.setPen(QtCore.Qt.NoPen)
+        diameter = 4.0
+        gap = 5.0
+        total_width = diameter * 3 + gap * 2
+        left = round((self.width() - total_width) / 2)
+        top = round((self.height() - diameter) / 2)
+        for index in range(3):
+            painter.drawEllipse(
+                QtCore.QRectF(left + index * (diameter + gap), top, diameter, diameter)
+            )
+        painter.end()
+
+
 class AnkiExportButton(QtWidgets.QWidget):
     exportRequested = QtCore.Signal(str, str, bool)  # language, audio_policy, force_options
     settingsRequested = QtCore.Signal()
@@ -95,38 +176,27 @@ class AnkiExportButton(QtWidgets.QWidget):
         super().__init__(parent)
         self._language = "en"
         self._status_text = ""
-        self._normal_icon = _resource_icon("anki_mark.svg")
-        self._active_icon = _resource_icon("anki_mark_active.svg")
         self.setObjectName("ankiExportButton")
         self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
 
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(2)
 
-        self.main_button = QtWidgets.QPushButton("Anki 내보내기")
-        self.main_button.setObjectName("wordbookExportButton")
-        self.main_button.setIcon(self._normal_icon)
-        self.main_button.setIconSize(QtCore.QSize(20, 20))
+        self.main_button = _AnkiMainButton(self)
+        self.option_button = _AnkiOptionButton(self)
         self.main_button.clicked.connect(lambda: self._emit_export("settings", False))
-        self.main_button.installEventFilter(self)
-
-        self.option_button = QtWidgets.QPushButton("⋯")
-        self.option_button.setObjectName("wordbookExportOptionButton")
-        self.option_button.setFixedSize(28, 28)
-        self.option_button.setToolTip("Anki 내보내기 옵션")
         self.option_button.clicked.connect(self._show_popup)
-        self.option_button.installEventFilter(self)
-
         layout.addWidget(self.main_button)
         layout.addWidget(self.option_button)
+        self.setFixedSize(174, 34)
 
         self._popup = _ExportPopup(self)
         self._popup.exportRequested.connect(
             lambda policy, force: self._emit_export(policy, force)
         )
         self._popup.settingsRequested.connect(self.settingsRequested.emit)
-        self._popup.closed.connect(lambda: self._set_active(False))
+        self._popup.closed.connect(self._sync_hover_state)
         self.set_status_text("")
 
     def set_language(self, language: str) -> None:
@@ -137,24 +207,42 @@ class AnkiExportButton(QtWidgets.QWidget):
         tooltip = "현재 단어장을 Anki APKG로 내보내기"
         if text:
             tooltip += f"\n{text}"
+        self.setToolTip(tooltip)
         self.main_button.setToolTip(tooltip)
         self.option_button.setToolTip(f"Anki 내보내기 옵션\n{text}" if text else "Anki 내보내기 옵션")
 
     def _show_popup(self) -> None:
-        self._set_active(True)
         self._popup.set_status_text(self._status_text)
         self._popup.show_for(self.option_button)
 
     def _emit_export(self, audio_policy: str, force_options: bool) -> None:
         self.exportRequested.emit(self._language, audio_policy, force_options)
 
-    def _set_active(self, active: bool) -> None:
-        self.main_button.setIcon(self._active_icon if active else self._normal_icon)
+    def _sync_hover_state(self) -> None:
+        self.main_button.update()
+        self.option_button.update()
 
-    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        if watched is self.main_button:
-            if event.type() == QtCore.QEvent.Enter:
-                self._set_active(True)
-            elif event.type() == QtCore.QEvent.Leave and not self._popup.isVisible():
-                self._set_active(False)
-        return super().eventFilter(watched, event)
+
+def _draw_star(
+    painter: QtGui.QPainter,
+    center: QtCore.QPointF,
+    radius: float,
+    color: QtGui.QColor,
+) -> None:
+    path = QtGui.QPainterPath()
+    inner = radius * 0.48
+    for index in range(10):
+        angle = -math.pi / 2 + index * math.pi / 5
+        r = radius if index % 2 == 0 else inner
+        point = QtCore.QPointF(center.x() + math.cos(angle) * r, center.y() + math.sin(angle) * r)
+        if index == 0:
+            path.moveTo(point)
+        else:
+            path.lineTo(point)
+    path.closeSubpath()
+    painter.setBrush(QtCore.Qt.NoBrush)
+    pen = QtGui.QPen(color, 1.8)
+    pen.setJoinStyle(QtCore.Qt.RoundJoin)
+    pen.setCapStyle(QtCore.Qt.RoundCap)
+    painter.setPen(pen)
+    painter.drawPath(path)

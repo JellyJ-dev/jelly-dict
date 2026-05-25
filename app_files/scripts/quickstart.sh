@@ -157,7 +157,7 @@ jelly dict 앱 파일 구조가 원래 배포본과 다릅니다.
 
 정상적인 최상위 구조:
   jelly-dict/
-  ├── Quick Start.command
+  ├── Install jelly dict.command
   ├── Run jelly dict.command
   ├── README.md
   └── app_files/
@@ -234,7 +234,7 @@ verify_public_layout() {
   echo "앱 파일 구조 확인 중..."
 
   for path in \
-    "${PUBLIC_ROOT}/Quick Start.command" \
+    "${PUBLIC_ROOT}/Install jelly dict.command" \
     "${PUBLIC_ROOT}/Run jelly dict.command" \
     "${PUBLIC_ROOT}/README.md" \
     "${PUBLIC_ROOT}/app_files" \
@@ -249,7 +249,7 @@ verify_public_layout() {
   done
 
   for path in \
-    "${PUBLIC_ROOT}/Quick Start.command" \
+    "${PUBLIC_ROOT}/Install jelly dict.command" \
     "${PUBLIC_ROOT}/Run jelly dict.command" \
     "${REPO_ROOT}/scripts/quickstart.sh" \
     "${REPO_ROOT}/scripts/run.sh"; do
@@ -480,9 +480,9 @@ Homebrew 기본 Python이 3.14+ 인 경우 PySide6 호환 버전을 설치하세
   brew install python@3.13     # 권장
   brew install python@3.12
 
-그 뒤 Quick Start.command를 다시 실행하세요. 설치된 여러 Python 중
+그 뒤 Install jelly dict.command를 다시 실행하세요. 설치된 여러 Python 중
 원하는 버전을 강제하려면 JELLY_DICT_PYTHON 환경변수도 가능합니다:
-  JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.13 ./Quick\ Start.command
+  JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.13 ./Install\ jelly\ dict.command
 
 로그에 "Missing dependencies for SOCKS support" 가 보이면 셸의
 ALL_PROXY / HTTPS_PROXY 가 socks://... 로 설정돼 있는 경우입니다.
@@ -574,7 +574,7 @@ print(f"  ✓ python3 version OK: {sys.version.split()[0]}")
 if current >= (3, 14):
     print(f"  ! Python {current[0]}.{current[1]} detected; PySide6 wheels may not exist yet for this version.")
     print("    If install fails with 'No matching distribution found for PySide6',")
-    print("    install Python 3.13, 3.12, or 3.11 and rerun Quick Start.")
+    print("    install Python 3.13, 3.12, or 3.11 and rerun Install jelly dict.command.")
 PY
 }
 
@@ -690,7 +690,7 @@ check_environment() {
       failed=1
     elif ! venv_matches_current_location; then
       echo "  ✗ virtual environment was created for a different folder"
-      echo "    rerun Quick Start and allow dependency installation to recreate it"
+      echo "    rerun Install jelly dict.command and allow dependency installation to recreate it"
       failed=1
     else
       echo "  ✓ virtual environment: ${VENV_DIR}"

@@ -40,10 +40,12 @@ class WordbookController:
         self._status = status_bar
         self._saved_words: set[tuple[str, str]] = set()
         self._current_sort_option = "최신순"
+        self._entries_cache: dict[str, tuple[Path, int, list]] = {}
 
     def update_settings(self, settings: Settings, anki_sync: AnkiSyncService) -> None:
         self._settings = settings
         self._anki_sync = anki_sync
+        self._entries_cache.clear()
 
     def set_saved_words_cache(self, saved_words: set[tuple[str, str]]) -> None:
         self._saved_words = set(saved_words)
@@ -74,11 +76,7 @@ class WordbookController:
     def show_inline(self, language: str, sort_option: str = "최신순") -> None:
         self._current_sort_option = sort_option
         language = language if language in ("en", "ja") else "en"
-        path = Path(self._settings.excel_path_for(language))
-        try:
-            raw_entries = excel_writer.list_entries(path)
-        except Exception:
-            raw_entries = []
+        raw_entries = self._load_entries(language)
 
         filtered = [
             entry
@@ -102,6 +100,24 @@ class WordbookController:
         self._status.showMessage(
             f"{'일본어' if language == 'ja' else '영어'} 단어장 {len(items)}개 (정렬: {sort_option})"
         )
+
+    def _load_entries(self, language: str) -> list:
+        path = Path(self._settings.excel_path_for(language))
+        try:
+            mtime_ns = path.stat().st_mtime_ns if path.exists() else -1
+        except OSError:
+            mtime_ns = -1
+        cached = self._entries_cache.get(language)
+        if cached is not None:
+            cached_path, cached_mtime_ns, cached_entries = cached
+            if cached_path == path and cached_mtime_ns == mtime_ns:
+                return list(cached_entries)
+        try:
+            entries = excel_writer.list_entries(path)
+        except Exception:
+            entries = []
+        self._entries_cache[language] = (path, mtime_ns, entries)
+        return list(entries)
 
     # ---------- deletion -----------------------------------------------
 
@@ -142,6 +158,7 @@ class WordbookController:
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self._parent, "삭제 실패", str(exc))
             return
+        self._entries_cache.pop(language, None)
 
         try:
             self._cache.delete_entries(language, keys)  # type: ignore[arg-type]

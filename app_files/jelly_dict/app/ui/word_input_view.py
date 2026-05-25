@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -22,6 +23,7 @@ class MenuTextButton(QtWidgets.QPushButton):
         super().__init__(text, parent)
         self._chevron_size = 8
         self._chevron_gap = 6
+        self.setFixedHeight(34)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         del event
@@ -42,12 +44,17 @@ class MenuTextButton(QtWidgets.QPushButton):
             option.features &= ~has_menu
         self.style().drawControl(QtWidgets.QStyle.CE_PushButton, option, painter, self)
 
-        font_metrics = QtGui.QFontMetrics(self.font())
+        font = QtGui.QFont(self.font())
+        font.setPixelSize(13)
+        font.setWeight(QtGui.QFont.Weight.Bold)
+        font_metrics = QtGui.QFontMetricsF(font)
         text = self.text()
-        text_width = font_metrics.horizontalAdvance(text)
+        text_width = math.ceil(font_metrics.horizontalAdvance(text))
         total_width = text_width + self._chevron_gap + self._chevron_size
-        left = (self.width() - total_width) // 2
-        baseline = (self.height() + font_metrics.ascent() - font_metrics.descent()) // 2
+        left = round((self.width() - total_width) / 2)
+        center_y = self.height() / 2
+        text_bounds = font_metrics.tightBoundingRect(text)
+        baseline = center_y - (text_bounds.top() + text_bounds.bottom()) / 2
 
         color = QtGui.QColor("#d4cec4")
         if not self.isEnabled():
@@ -56,26 +63,26 @@ class MenuTextButton(QtWidgets.QPushButton):
             color = QtGui.QColor("#e7e1d6")
 
         painter.setPen(color)
-        painter.setFont(self.font())
-        painter.drawText(left, baseline, text)
+        painter.setFont(font)
+        painter.drawText(QtCore.QPointF(left, baseline), text)
 
         chevron_left = left + text_width + self._chevron_gap
-        chevron_top = (self.height() - self._chevron_size) // 2 + 2
+        chevron_center_y = round(center_y + 0.5)
         pen = QtGui.QPen(color, 2)
         pen.setCapStyle(QtCore.Qt.RoundCap)
         pen.setJoinStyle(QtCore.Qt.RoundJoin)
         painter.setPen(pen)
         painter.drawLine(
             chevron_left + 1,
-            chevron_top + 2,
+            chevron_center_y - 2,
             chevron_left + self._chevron_size // 2,
-            chevron_top + self._chevron_size - 2,
+            chevron_center_y + 2,
         )
         painter.drawLine(
             chevron_left + self._chevron_size - 1,
-            chevron_top + 2,
+            chevron_center_y - 2,
             chevron_left + self._chevron_size // 2,
-            chevron_top + self._chevron_size - 2,
+            chevron_center_y + 2,
         )
         painter.end()
 
@@ -121,6 +128,41 @@ class QueueJobChip(QtWidgets.QPushButton):
         super().mousePressEvent(event)
 
 
+class WordbookListWidget(QtWidgets.QListWidget):
+    """Trackpad-friendly scrolling for the wordbook list."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._wheel_remainder = 0.0
+        self.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self.verticalScrollBar().setSingleStep(16)
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        bar = self.verticalScrollBar()
+        pixel_y = event.pixelDelta().y()
+        if pixel_y:
+            self._scroll_by(pixel_y * 0.62)
+            event.accept()
+            return
+
+        angle_y = event.angleDelta().y()
+        if angle_y:
+            self._scroll_by((angle_y / 120.0) * bar.singleStep() * 2.2)
+            event.accept()
+            return
+
+        super().wheelEvent(event)
+
+    def _scroll_by(self, delta: float) -> None:
+        bar = self.verticalScrollBar()
+        self._wheel_remainder += delta
+        whole_delta = int(self._wheel_remainder)
+        if whole_delta == 0:
+            return
+        self._wheel_remainder -= whole_delta
+        bar.setValue(bar.value() - whole_delta)
+
+
 class WordInputView(QtWidgets.QWidget):
     """Command-center style word input with a compact recent list."""
 
@@ -156,6 +198,7 @@ class WordInputView(QtWidgets.QWidget):
         self._ocr_tokens: list[str] = []
         self._ocr_selected_tokens: list[str] = []
         self._ocr_chip_buttons: dict[str, QtWidgets.QPushButton] = {}
+        self._ocr_provider = "apple_vision"
         self._clear_search_after_expand = False
         self._pressed_selected_wordbook_item: QtWidgets.QListWidgetItem | None = None
         self._list_height_animation: QtCore.QVariantAnimation | None = None
@@ -164,6 +207,9 @@ class WordInputView(QtWidgets.QWidget):
         self._ocr_height_animation: QtCore.QVariantAnimation | None = None
         self._hover_icons: dict[QtWidgets.QPushButton, tuple[QtGui.QIcon, QtGui.QIcon]] = {}
         self._language_actions: dict[str, QtWidgets.QWidgetAction | QtCore.QObject] = {}
+        self._word_list_actions: dict[str, QtWidgets.QWidgetAction | QtCore.QObject] = {}
+        self._sort_actions: dict[str, QtWidgets.QWidgetAction | QtCore.QObject] = {}
+        self._ocr_actions: dict[str, QtWidgets.QWidgetAction | QtCore.QObject] = {}
         # Debounce timer for the wordbook search field — avoids re-rendering
         # the list on every keystroke when the user types fast.
         self._search_debounce = QtCore.QTimer(self)
@@ -246,25 +292,6 @@ class WordInputView(QtWidgets.QWidget):
 
         self.ocr_bulk_lookup_btn = QtWidgets.QPushButton("선택/전체 후보 조회")
         self.ocr_bulk_lookup_btn.setObjectName("ocrBulkLookupButton")
-        self.ocr_bulk_lookup_btn.setStyleSheet("""
-            QPushButton#ocrBulkLookupButton {
-                background: #24221f;
-                color: #e58d3c;
-                border: 1px solid #383530;
-                border-radius: 4px;
-                padding: 2px 6px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton#ocrBulkLookupButton:hover {
-                background: #2e2a24;
-                border-color: #a86122;
-            }
-            QPushButton#ocrBulkLookupButton:disabled {
-                color: #615c54;
-                border-color: #24221f;
-            }
-        """)
         self.ocr_bulk_lookup_btn.setCursor(QtCore.Qt.PointingHandCursor)
         self.ocr_bulk_lookup_btn.setEnabled(False)
         self.ocr_bulk_lookup_btn.clicked.connect(self._on_ocr_bulk_lookup_clicked)
@@ -282,42 +309,21 @@ class WordInputView(QtWidgets.QWidget):
         self.queue_panel = QtWidgets.QFrame()
         self.queue_panel.setObjectName("queuePanel")
         self.queue_panel.setVisible(False)
-        self.queue_panel.setStyleSheet("""
-            QFrame#queuePanel {
-                background: #1c1a17;
-                border: 1px solid #2d2a25;
-                border-radius: 6px;
-                padding: 6px;
-            }
-        """)
         queue_layout = QtWidgets.QVBoxLayout(self.queue_panel)
         queue_layout.setContentsMargins(4, 4, 4, 4)
         queue_layout.setSpacing(4)
 
         queue_header = QtWidgets.QHBoxLayout()
         queue_title = QtWidgets.QLabel("조회 대기열")
-        queue_title.setStyleSheet("font-weight: bold; color: #a49e94; font-size: 11px;")
+        queue_title.setObjectName("queueTitle")
         self.queue_count_label = QtWidgets.QLabel("0개 대기 중")
-        self.queue_count_label.setStyleSheet("color: #8a847a; font-size: 11px;")
+        self.queue_count_label.setObjectName("queueCount")
         queue_header.addWidget(queue_title)
         queue_header.addWidget(self.queue_count_label)
         queue_header.addStretch(1)
 
         self.queue_retry_failed_btn = QtWidgets.QPushButton("실패 재시도")
         self.queue_retry_failed_btn.setObjectName("queueHeaderLink")
-        self.queue_retry_failed_btn.setStyleSheet("""
-            QPushButton#queueHeaderLink {
-                background: transparent;
-                border: none;
-                color: #e58d3c;
-                font-size: 11px;
-                padding: 0px 4px;
-                text-decoration: underline;
-            }
-            QPushButton#queueHeaderLink:hover {
-                color: #f7a858;
-            }
-        """)
         self.queue_retry_failed_btn.setVisible(False)
         self.queue_retry_failed_btn.setCursor(QtCore.Qt.PointingHandCursor)
         self.queue_retry_failed_btn.clicked.connect(self.bulkRetryFailedRequested.emit)
@@ -325,19 +331,6 @@ class WordInputView(QtWidgets.QWidget):
 
         self.queue_clear_failed_btn = QtWidgets.QPushButton("실패 지우기")
         self.queue_clear_failed_btn.setObjectName("queueHeaderLinkDanger")
-        self.queue_clear_failed_btn.setStyleSheet("""
-            QPushButton#queueHeaderLinkDanger {
-                background: transparent;
-                border: none;
-                color: #ff6b6b;
-                font-size: 11px;
-                padding: 0px 4px;
-                text-decoration: underline;
-            }
-            QPushButton#queueHeaderLinkDanger:hover {
-                color: #ff8b8b;
-            }
-        """)
         self.queue_clear_failed_btn.setVisible(False)
         self.queue_clear_failed_btn.setCursor(QtCore.Qt.PointingHandCursor)
         self.queue_clear_failed_btn.clicked.connect(self.bulkClearFailedRequested.emit)
@@ -475,7 +468,7 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_search.setVisible(False)
         recent_layout.addWidget(self.wordbook_search)
 
-        self.recent_list = QtWidgets.QListWidget()
+        self.recent_list = WordbookListWidget()
         self.recent_list.setObjectName("recentList")
         self.recent_list.setFlow(QtWidgets.QListView.TopToBottom)
         self.recent_list.setWrapping(False)
@@ -600,33 +593,30 @@ class WordInputView(QtWidgets.QWidget):
             item.clicked.connect(lambda _=False, v=value, m=menu: self._open_word_list(v, m))
             action.setDefaultWidget(item)
             menu.addAction(action)
+            self._word_list_actions[value] = action
+        menu.aboutToShow.connect(self._sync_word_list_menu)
         return menu
 
     def _build_wordbook_sort_menu(self) -> QtWidgets.QMenu:
         menu = QtWidgets.QMenu(self)
         menu.setObjectName("languageMenu")
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #242422;
-                border: 1px solid #3f3f3c;
-                border-radius: 6px;
-                padding: 4px 0px;
-            }
-            QMenu::item {
-                color: #d4cec4;
-                padding: 6px 20px;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QMenu::item:selected {
-                background-color: #3a322d;
-                color: #f1ece2;
-            }
-        """)
-        for opt in ["최신순", "오래된순", "가나다순"]:
-            action = menu.addAction(opt)
-            action.triggered.connect(lambda checked=False, o=opt: self._on_sort_changed(o))
+        for opt, subtitle in [
+            ("최신순", "새로 저장한 단어 먼저"),
+            ("오래된순", "처음 저장한 단어 먼저"),
+            ("가나다순", "단어 이름 기준 정렬"),
+        ]:
+            action = QtWidgets.QWidgetAction(menu)
+            item = LanguageMenuItem(opt, subtitle)
+            item.clicked.connect(lambda _=False, o=opt, m=menu: self._select_sort(o, m))
+            action.setDefaultWidget(item)
+            menu.addAction(action)
+            self._sort_actions[opt] = action
+        menu.aboutToShow.connect(self._sync_sort_menu)
         return menu
+
+    def _select_sort(self, option: str, menu: QtWidgets.QMenu) -> None:
+        menu.close()
+        self._on_sort_changed(option)
 
     def _on_sort_changed(self, option: str) -> None:
         self.wordbook_sort_btn.setText(option)
@@ -638,6 +628,7 @@ class WordInputView(QtWidgets.QWidget):
         from app.storage import secret_store
 
         self._ocr_menu.clear()
+        self._ocr_actions.clear()
         gv_key_set = secret_store.is_set("google_vision_api_key")
         items = [
             ("apple_vision", "Apple Vision", "macOS 로컬 OCR", True),
@@ -658,14 +649,18 @@ class WordInputView(QtWidgets.QWidget):
                 )
             action.setDefaultWidget(item)
             self._ocr_menu.addAction(action)
+            self._ocr_actions[name] = action
+        self._sync_ocr_menu()
 
     def _select_ocr_provider(self, name: str, label: str) -> None:
+        self._ocr_provider = name
         self.ocr_model_btn.setText(label)
         self._ocr_menu.close()
         self.ocrProviderChanged.emit(name)
 
     def set_ocr_provider_label(self, name: str) -> None:
         """Sync the button label with externally-loaded settings."""
+        self._ocr_provider = name if name in ("apple_vision", "google_vision") else "apple_vision"
         self.ocr_model_btn.setText(
             "Google Vision" if name == "google_vision" else "Apple Vision"
         )
@@ -687,6 +682,24 @@ class WordInputView(QtWidgets.QWidget):
             widget = action.defaultWidget()  # type: ignore[attr-defined]
             if isinstance(widget, LanguageMenuItem):
                 widget.set_selected(value == self._forced_language)
+
+    def _sync_word_list_menu(self) -> None:
+        for value, action in self._word_list_actions.items():
+            widget = action.defaultWidget()  # type: ignore[attr-defined]
+            if isinstance(widget, LanguageMenuItem):
+                widget.set_selected(value == self._list_mode)
+
+    def _sync_sort_menu(self) -> None:
+        for value, action in self._sort_actions.items():
+            widget = action.defaultWidget()  # type: ignore[attr-defined]
+            if isinstance(widget, LanguageMenuItem):
+                widget.set_selected(value == self.wordbook_sort_btn.text())
+
+    def _sync_ocr_menu(self) -> None:
+        for value, action in self._ocr_actions.items():
+            widget = action.defaultWidget()  # type: ignore[attr-defined]
+            if isinstance(widget, LanguageMenuItem):
+                widget.set_selected(value == self._ocr_provider)
 
     def _open_recent_entry(self, item: QtWidgets.QListWidgetItem) -> None:
         payload = item.data(QtCore.Qt.UserRole)
@@ -950,62 +963,24 @@ class WordInputView(QtWidgets.QWidget):
         for word, status, job_id in display_jobs:
             if status == "running":
                 chip = QtWidgets.QPushButton()
+                chip.setObjectName("queueChipRunning")
                 chip.setText(f"⏳ {word}")
                 chip.setCursor(QtCore.Qt.ArrowCursor)
                 chip.setToolTip(f"'{word}' (조회 중...)")
-                chip.setStyleSheet("""
-                    QPushButton {
-                        background-color: #3d3025;
-                        color: #e58d3c;
-                        border: 1px solid #a86122;
-                        border-radius: 4px;
-                        padding: 3px 8px;
-                        font-size: 11px;
-                        font-weight: bold;
-                    }
-                """)
             elif status == "failed":
                 chip = QueueJobChip()
+                chip.setObjectName("queueChipFailed")
                 chip.setText(f"⚠️ {word}")
                 chip.setCursor(QtCore.Qt.PointingHandCursor)
                 chip.setToolTip(f"'{word}' (조회 실패. 클릭: 재시도, 우클릭: 삭제)")
-                chip.setStyleSheet("""
-                    QPushButton {
-                        background-color: #3d2121;
-                        color: #ff6b6b;
-                        border: 1px solid #c93b3b;
-                        border-radius: 4px;
-                        padding: 3px 8px;
-                        font-size: 11px;
-                        font-weight: bold;
-                    }
-                    QPushButton:hover {
-                        background-color: #4a2727;
-                        border-color: #e04343;
-                    }
-                """)
                 chip.clicked.connect(lambda checked=False, jid=job_id: self.jobRetryRequested.emit(jid))
                 chip.rightClicked.connect(lambda jid=job_id: self.jobCancelRequested.emit(jid))
             else:
                 chip = QtWidgets.QPushButton()
+                chip.setObjectName("queueChipPending")
                 chip.setText(word)
                 chip.setCursor(QtCore.Qt.PointingHandCursor)
                 chip.setToolTip(f"'{word}' (대기열에서 취소하려면 클릭)")
-                chip.setStyleSheet("""
-                    QPushButton {
-                        background-color: #24221f;
-                        color: #8c867c;
-                        border: 1px solid #383530;
-                        border-radius: 4px;
-                        padding: 3px 8px;
-                        font-size: 11px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3d1c1c;
-                        color: #ff6b6b;
-                        border: 1px solid #c93b3b;
-                    }
-                """)
                 chip.clicked.connect(lambda checked=False, jid=job_id: self.jobCancelRequested.emit(jid))
 
             self.queue_chips_layout.addWidget(chip)
@@ -1013,6 +988,7 @@ class WordInputView(QtWidgets.QWidget):
         if has_more:
             more_count = len(jobs) - len(display_jobs)
             more_chip = QtWidgets.QPushButton()
+            more_chip.setObjectName("queueChipMore")
             more_chip.setText(f"+ 외 {more_count}개")
             more_chip.setCursor(QtCore.Qt.PointingHandCursor)
 
@@ -1026,20 +1002,7 @@ class WordInputView(QtWidgets.QWidget):
 
             def show_more_menu() -> None:
                 menu = QtWidgets.QMenu(more_chip)
-                menu.setStyleSheet("""
-                    QMenu {
-                        background-color: #24221f;
-                        color: #dfdedc;
-                        border: 1px solid #383530;
-                    }
-                    QMenu::item {
-                        padding: 4px 20px;
-                    }
-                    QMenu::item:selected {
-                        background-color: #3d3025;
-                        color: #e58d3c;
-                    }
-                """)
+                menu.setObjectName("languageMenu")
                 for word, status, job_id in hidden_jobs:
                     if status == "failed":
                         retry_act = menu.addAction(f"⚠️ {word} (조회 재시도)")
@@ -1054,18 +1017,6 @@ class WordInputView(QtWidgets.QWidget):
                 menu.exec(pos)
 
             more_chip.clicked.connect(show_more_menu)
-
-            more_chip.setStyleSheet("""
-                QPushButton {
-                    background-color: #20201f;
-                    color: #8c867c;
-                    border: 1px solid #383530;
-                    border-radius: 4px;
-                    padding: 3px 8px;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-            """)
             self.queue_chips_layout.addWidget(more_chip)
 
     def set_wordbook(self, language: str, items: list[WordbookItem]) -> None:

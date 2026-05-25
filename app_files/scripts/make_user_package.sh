@@ -7,6 +7,28 @@ PUBLIC_ROOT="$(cd "${APP_FILES_ROOT}/.." && pwd)"
 OUT_DIR="${PUBLIC_ROOT}/dist/jelly-dict"
 APP_FILES="${OUT_DIR}/app_files"
 
+usage() {
+  cat <<'USAGE'
+Usage: app_files/scripts/make_user_package.sh
+
+Create an ignored dist/jelly-dict folder for user distribution.
+USAGE
+}
+
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+fi
+
 if [[ -e "${OUT_DIR}" ]]; then
   echo "Output already exists: ${OUT_DIR}" >&2
   echo "Move or delete that folder first, then run this script again." >&2
@@ -15,9 +37,19 @@ fi
 
 mkdir -p "${APP_FILES}"
 
-cp "${PUBLIC_ROOT}/Quick Start.command" "${OUT_DIR}/"
+cp "${PUBLIC_ROOT}/Install jelly dict.command" "${OUT_DIR}/"
 cp "${PUBLIC_ROOT}/Run jelly dict.command" "${OUT_DIR}/"
 cp "${PUBLIC_ROOT}/README.md" "${OUT_DIR}/"
+
+for dir in assets design packaging; do
+  if [[ -d "${APP_FILES_ROOT}/${dir}" ]]; then
+    mkdir -p "${APP_FILES}/${dir}"
+    rsync -a \
+      --exclude ".DS_Store" \
+      --exclude "__pycache__/" \
+      "${APP_FILES_ROOT}/${dir}/" "${APP_FILES}/${dir}/"
+  fi
+done
 
 rsync -a \
   --exclude ".DS_Store" \
@@ -44,8 +76,9 @@ for doc in LICENSE THIRD_PARTY_NOTICES.md; do
   fi
 done
 
-chmod +x "${OUT_DIR}/Quick Start.command" "${OUT_DIR}/Run jelly dict.command"
+chmod +x "${OUT_DIR}/Install jelly dict.command" "${OUT_DIR}/Run jelly dict.command"
 chmod +x "${APP_FILES}/scripts/quickstart.sh" "${APP_FILES}/scripts/run.sh"
+chmod +x "${APP_FILES}/packaging/macos/build_app.sh" "${APP_FILES}/packaging/macos/make_icns.sh" 2>/dev/null || true
 
 echo "Created: ${OUT_DIR}"
 echo

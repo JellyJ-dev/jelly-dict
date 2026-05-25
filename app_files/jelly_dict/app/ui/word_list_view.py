@@ -274,10 +274,34 @@ class WordListDialog(QtWidgets.QDialog):
                 background: #242422;
                 color: #e7e1d6;
                 border: 1px solid #3f3f3c;
-                border-radius: 8px;
+                border-radius: 10px;
                 padding: 8px 12px;
                 font-size: 13px;
                 font-weight: 600;
+            }
+            QComboBox#wordListSort {
+                background: #242422;
+                color: #e7e1d6;
+                border: 1px solid #3f3f3c;
+                border-radius: 10px;
+                padding: 7px 28px 7px 12px;
+                min-height: 24px;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QComboBox#wordListSort::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 30px;
+                border-left: 1px solid #343431;
+                border-top-right-radius: 10px;
+                border-bottom-right-radius: 10px;
+                background: #242422;
+            }
+            QComboBox#wordListSort::down-arrow {
+                image: url(resources/icons/chevron_down.svg);
+                width: 12px;
+                height: 12px;
             }
             QLineEdit#wordListSearch::placeholder {
                 color: #77746d;
@@ -286,7 +310,7 @@ class WordListDialog(QtWidgets.QDialog):
                 background: #20201f;
                 color: #d4cec4;
                 border: 1px solid #3f3f3c;
-                border-radius: 12px;
+                border-radius: 14px;
                 outline: 0;
                 font-size: 13px;
                 font-weight: 600;
@@ -313,8 +337,9 @@ class WordListDialog(QtWidgets.QDialog):
                 background: #30302e;
                 color: #e7e1d6;
                 border: 1px solid #454542;
-                border-radius: 8px;
-                padding: 8px 14px;
+                border-radius: 10px;
+                padding: 8px 16px;
+                min-height: 28px;
                 font-size: 13px;
                 font-weight: 700;
             }

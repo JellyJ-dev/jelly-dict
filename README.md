@@ -1,6 +1,8 @@
 # jelly dict
 
-> **현재 버전: v0.0.4**
+<img src="app_files/assets/app-icon-1024.png" alt="jelly dict logo" width="96">
+
+> **현재 버전: v1.0.0**
 
 **jelly dict**는 영어/일본어 단어를 빠르게 조회해 Excel 단어장에 저장하고, 필요하면 Anki `.apkg` 덱으로 내보내는 **macOS용 로컬 단어장 도구**입니다.
 
@@ -32,7 +34,7 @@ GitHub 저장소를 다운로드하거나 clone한 뒤, 포함된 installer를 �
 
 Windows와 Linux는 공식 지원 대상이 아닙니다.
 
-Quick Start는 `PySide6>=6.7,<6.11` 범위에서 현재 Python에 맞는 Qt 패키지를 설치합니다. PySide6 6.x 시리즈는 Python 3.13까지 macOS wheel을 제공합니다. Homebrew 기본 Python이 3.14 이상이면 `No matching distribution found for PySide6` 로 설치가 실패할 수 있으니, 다음과 같이 호환 버전을 설치한 뒤 다시 실행하세요:
+installer는 `PySide6>=6.7,<6.11` 범위에서 현재 Python에 맞는 Qt 패키지를 설치합니다. PySide6 6.x 시리즈는 Python 3.13까지 macOS wheel을 제공합니다. Homebrew 기본 Python이 3.14 이상이면 `No matching distribution found for PySide6` 로 설치가 실패할 수 있으니, 다음과 같이 호환 버전을 설치한 뒤 다시 실행하세요:
 
 ```bash
 brew install python@3.13       # 권장
@@ -43,7 +45,7 @@ brew install python@3.12
 특정 Python을 강제하려면 `JELLY_DICT_PYTHON` 환경변수도 사용 가능:
 
 ```bash
-JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.13 ./Quick\ Start.command
+JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.13 ./Install\ jelly\ dict.command
 ```
 
 ---
@@ -79,12 +81,12 @@ repo 폴더 위치를 옮기면 `Jelly Dict.app` 안에 저장된 원본 경로�
 `Install jelly dict.command`는 다음 순서로 진행됩니다.
 
 1. repo 위치와 파일 구조를 확인합니다.
-2. 기존 Quick Start 설치/점검을 실행합니다.
+2. Python, 가상환경, 필수 패키지, Playwright WebKit을 점검하고 필요하면 설치/복구합니다.
 3. `app_files/dist/Jelly Dict.app`을 생성합니다.
 4. `~/Applications`에 복사할지 묻습니다.
 5. 완료 후 앱을 바로 실행할지 묻습니다.
 
-생성된 `.app`은 내부에 앱 코드를 복사하지 않고, 원본 repo 경로를 저장한 뒤 기존 Quick Start와 Run 스크립트를 감싸서 실행합니다.
+생성된 `.app`은 내부에 앱 코드를 복사하지 않고, 원본 repo 경로를 저장한 뒤 내부 환경 점검 스크립트와 실행 스크립트를 감싸서 실행합니다.
 
 ---
 
@@ -97,8 +99,8 @@ jelly dict는 Python 패키지, Playwright WebKit, macOS 권한, 가상환경 �
 개발자는 필요하면 아래 파일을 직접 사용할 수 있습니다.
 
 ```text
-Quick Start.command
 Run jelly dict.command
+app_files/scripts/quickstart.sh
 ```
 
 수동 설치나 직접 실행은 문제 해결 범위에 포함하지 않습니다.
@@ -112,9 +114,9 @@ app_files/jelly_dict/.jelly_dict/logs/launcher.log
 
 ---
 
-## Quick Start가 확인하는 것
+## installer가 확인하는 것
 
-`Quick Start.command`는 앱 실행 전에 다음 항목을 확인합니다.
+`Install jelly dict.command`는 앱 실행 전에 다음 항목을 확인합니다.
 
 - 앱 파일 구조가 원래 배포본과 같은지
 - macOS에서 실행 중인지
@@ -128,14 +130,14 @@ app_files/jelly_dict/.jelly_dict/logs/launcher.log
 - macOS 격리 속성 문제가 있는지
 - Rosetta로 잘못 실행 중인지
 
-파일이 빠졌거나 폴더 구조가 바뀐 상태라면 Quick Start는 설치를 중단합니다.  
+파일이 빠졌거나 폴더 구조가 바뀐 상태라면 installer는 설치를 중단합니다.
 의도한 수정이 아니라면 저장소를 새로 다운로드하거나, git으로 받은 경우 `git pull` 후 다시 실행하는 편이 안전합니다.
 
 ---
 
 ## 설치 방식
 
-Quick Start는 먼저 라이선스 동의를 받은 뒤, 설치가 필요한 경우 설치 방식을 물어봅니다.
+installer는 먼저 라이선스 동의를 받은 뒤, 설치가 필요한 경우 설치 방식을 물어봅니다.
 
 ### 권장: 전용 가상환경 사용
 
@@ -260,7 +262,7 @@ VOICEVOX를 사용하려면 VOICEVOX 앱 또는 엔진을 따로 실행해 아�
 
 ## 문제가 생겼을 때
 
-먼저 `Quick Start.command`를 다시 실행해 주세요.
+먼저 `Install jelly dict.command`를 다시 실행해 주세요.
 
 이 스크립트는 Python, 가상환경, 필수 패키지, Playwright WebKit, 권한, 디스크 공간, 앱 파일 구조를 다시 점검합니다.
 
@@ -269,7 +271,7 @@ VOICEVOX를 사용하려면 VOICEVOX 앱 또는 엔진을 따로 실행해 아�
 - macOS 버전
 - Python 버전
 - Intel Mac / Apple Silicon Mac 여부
-- `Quick Start.command` 실행 로그
+- 설치/환경 점검 로그: `app_files/jelly_dict/.jelly_dict/logs/quickstart.log`
 - 오류가 난 화면 또는 메시지
 
 ---

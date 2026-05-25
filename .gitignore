@@ -16,6 +16,8 @@ venv/
 **/.install_mode
 .quickstart_ok
 **/.quickstart_ok
+.install_incomplete
+**/.install_incomplete
 .python_cmd
 **/.python_cmd
 
@@ -34,6 +36,7 @@ dist/
 
 .idea/
 .vscode/
+.claude/
 
 # secrets — never commit API keys, .env files, or anything resembling them
 .env

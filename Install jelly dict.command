@@ -19,7 +19,7 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-JELLY_DICT_VERSION="0.0.4"
+JELLY_DICT_VERSION="1.0.0"
 
 APP_NAME="Jelly Dict.app"
 QUICKSTART_SCRIPT="${SCRIPT_DIR}/app_files/scripts/quickstart.sh"
@@ -173,14 +173,14 @@ print_header() {
   [[ -n "${force_mode}" ]] && mode="${force_mode}"
 
   if [[ "${mode}" == "tiny" ]]; then
-    printf '%s%s✦ jelly dict%s  %s· Quick Start · v%s%s\n\n' \
+    printf '%s%s✦ jelly dict%s  %s· Installer · v%s%s\n\n' \
       "${BOLD}" "${ACCENT}" "${RESET}" "${MUTED}" "${JELLY_DICT_VERSION}" "${RESET}"
     [[ -n "${step_label}" ]] && printf '%s●%s %s%s%s   %s%s%s\n\n' \
       "${ACCENT}" "${RESET}" "${BOLD}${INK}" "${step_label}" "${RESET}" "${MUTED}" "${step_caption}" "${RESET}"
     return
   fi
 
-  draw_border top "jelly dict  ·  Quick Start  ·  v${JELLY_DICT_VERSION}"
+  draw_border top "jelly dict  ·  Installer  ·  v${JELLY_DICT_VERSION}"
   frame_blank
 
   if [[ "${mode}" == "normal" ]]; then

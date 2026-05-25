@@ -36,7 +36,7 @@ class ExportPlan:
     @property
     def audio_summary(self) -> str:
         if self.audio_policy == "remove_audio":
-            return "기존 Anki 음성 제거용"
+            return "Anki 카드 음성 비우기"
         if not self.effective_tts_enabled:
             return "TTS 없음"
         examples = "단어+예문 음성" if self.tts_play_examples else "단어 음성"

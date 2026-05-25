@@ -103,7 +103,7 @@ if [[ "${INSTALL_MODE}" == "venv" ]]; then
 
   if ! venv_matches_current_location; then
     echo "Virtual environment was created for a different folder." >&2
-    echo "Run Quick Start and allow dependency installation to recreate it." >&2
+    echo "Run Install jelly dict.command and allow dependency installation to recreate it." >&2
     echo "  ${REPO_ROOT}/scripts/quickstart.sh" >&2
     exit 1
   fi

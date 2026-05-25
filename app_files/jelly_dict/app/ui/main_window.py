@@ -52,6 +52,29 @@ class LookupJob:
         self.status = "pending"  # "pending" | "running" | "failed"
 
 
+class SavedWordsCacheWorker(QtCore.QObject):
+    finished = QtCore.Signal(object)
+
+    def __init__(self, settings: Settings) -> None:
+        super().__init__()
+        self._settings = settings
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        saved: set[tuple[str, str]] = set()
+        for lang in ("en", "ja"):
+            path = Path(self._settings.excel_path_for(lang))
+            if not path.exists():
+                continue
+            try:
+                for entry in excel_writer.list_entries(path):
+                    if entry.language == lang and (entry.word or "").strip():
+                        saved.add((lang, normalize_word_key(entry.word, lang)))
+            except Exception as exc:
+                log.warning("saved words cache load failed from %s: %s", path, exc)
+        self.finished.emit(saved)
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -87,9 +110,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_worker: LookupWorker | None = None
         self._ocr_thread: QtCore.QThread | None = None
         self._ocr_worker: OcrWorker | None = None
+        self._saved_words_thread: QtCore.QThread | None = None
+        self._saved_words_worker: SavedWordsCacheWorker | None = None
         self._saved_words_started: float | None = None
         self._ocr_temp_path: Path | None = None
         self._browser_prewarm_started = False
+        self._browser_prewarm_timer = QtCore.QTimer(self)
+        self._browser_prewarm_timer.setSingleShot(True)
+        self._browser_prewarm_timer.setInterval(900)
+        self._browser_prewarm_timer.timeout.connect(self._prewarm_browser)
         self._lookup_queue: list[LookupJob] = []
         self._active_job: LookupJob | None = None
         self._lookup_queue_total = 0
@@ -149,7 +178,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_view.ocrProviderChanged.connect(self._on_ocr_provider_changed)
         self.input_view.ocrCleared.connect(self._cleanup_current_ocr_temp)
         if hasattr(self.input_view, "prewarmRequested"):
-            self.input_view.prewarmRequested.connect(self._prewarm_browser)
+            self.input_view.prewarmRequested.connect(self._schedule_browser_prewarm)
         self.input_view.set_ocr_provider_label(self._settings.ocr_provider)
 
         input_scroll = QtWidgets.QScrollArea()
@@ -226,24 +255,33 @@ class MainWindow(QtWidgets.QMainWindow):
     def _schedule_idle_startup_tasks(self) -> None:
         QtCore.QTimer.singleShot(300, self._start_saved_words_cache_load)
         QtCore.QTimer.singleShot(1200, self._cleanup_ocr_temp_dir_idle)
-        # Delay browser startup until the first paint and early interactions
-        # have settled. First focus/typing still triggers this immediately.
-        QtCore.QTimer.singleShot(2500, self._prewarm_browser)
 
     def _start_saved_words_cache_load(self) -> None:
-        self._saved_words_started = time.perf_counter()
-        saved: set[tuple[str, str]] = set()
-        for lang in ("en", "ja"):
-            path = Path(self._settings.excel_path_for(lang))
-            if not path.exists():
-                continue
+        if self._saved_words_thread is not None:
             try:
-                for entry in excel_writer.list_entries(path):
-                    if entry.language == lang and (entry.word or "").strip():
-                        saved.add((lang, normalize_word_key(entry.word, lang)))
-            except Exception as exc:
-                log.warning("saved words cache load failed from %s: %s", path, exc)
-        self._on_saved_words_cache_ready(saved)
+                if self._saved_words_thread.isRunning():
+                    return
+            except RuntimeError:
+                self._saved_words_thread = None
+                self._saved_words_worker = None
+        self._saved_words_started = time.perf_counter()
+        thread = QtCore.QThread(self)
+        worker = SavedWordsCacheWorker(self._settings)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_saved_words_cache_ready)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_saved_words_worker)
+        self._saved_words_thread = thread
+        self._saved_words_worker = worker
+        thread.start()
+
+    @QtCore.Slot()
+    def _clear_saved_words_worker(self) -> None:
+        self._saved_words_thread = None
+        self._saved_words_worker = None
 
     @QtCore.Slot(object)
     def _on_saved_words_cache_ready(self, saved_words: object) -> None:
@@ -257,10 +295,22 @@ class MainWindow(QtWidgets.QMainWindow):
         with self._startup_perf.span("ocr_temp_cleanup"):
             ocr_temp_files.cleanup_temp_dir()
 
-    def _prewarm_browser(self) -> None:
-        """Start Playwright in the background so the first user lookup
-        doesn't include the ~2 second browser launch cost."""
+    def _schedule_browser_prewarm(self) -> None:
         if self._browser_prewarm_started:
+            return
+        self._browser_prewarm_timer.start()
+
+    def _prewarm_browser(self) -> None:
+        """Warm Playwright only after real user input.
+
+        macOS can show a crash report if WebKit is launched by a short-lived
+        offscreen validation process. Lookup still starts Playwright lazily
+        when needed; this path is only an interactive latency optimization.
+        """
+        if self._browser_prewarm_started:
+            return
+        platform = QtWidgets.QApplication.platformName().lower()
+        if platform in {"offscreen", "minimal"}:
             return
         if not isinstance(self._provider, NaverDictionaryCrawlerProvider):
             return
@@ -733,7 +783,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_status_summary()
 
     def _open_settings(self) -> None:
-        dlg = SettingsDialog(self._settings_store, self)
+        dlg = SettingsDialog(self._settings_store, self, initial_settings=self._settings)
         dlg.settingsChanged.connect(self._apply_settings)
         dlg.exec()
 
