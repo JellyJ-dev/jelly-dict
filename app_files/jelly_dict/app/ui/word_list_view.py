@@ -354,6 +354,7 @@ class WordListDialog(QtWidgets.QDialog):
                 min-height: 28px;
                 font-size: 13px;
                 font-weight: 700;
+                text-align: center;
             }
             QPushButton:hover {
                 background: #353532;
