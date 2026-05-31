@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from app.core.models import Example, VocabularyEntry
 from app.ui.entry_detail_dialog import EntryDetailDialog
@@ -15,12 +15,12 @@ def test_entry_detail_shows_memo_tags_source_and_all_examples(qtbot):
         language="en",
         word="retention",
         meanings_summary="1.보유",
-        tags=["school", "exam"],
-        memo="중요 단어",
-        source_url="https://example.test/retention",
+        tags=["school", "<b>exam</b>"],
+        memo="중요 <b>단어</b>",
+        source_url="https://example.test/retention?from=very-long-query",
         examples_flat=[
             Example(source_text_plain=f"example {idx}", translation_ko=f"예문 {idx}")
-            for idx in range(6)
+            for idx in range(12)
         ],
     )
     dialog = EntryDetailDialog(entry)
@@ -29,12 +29,21 @@ def test_entry_detail_shows_memo_tags_source_and_all_examples(qtbot):
     texts = _label_texts(dialog)
 
     assert "태그" in texts
-    assert "school, exam" in texts
+    assert "school, <b>exam</b>" in texts
     assert "메모" in texts
-    assert "중요 단어" in texts
+    assert "중요 <b>단어</b>" in texts
     assert "출처" in texts
-    assert any("https://example.test/retention" in text for text in texts)
-    assert "example 5\n예문 5" in texts
+    assert any("example.test/retention" in text for text in texts)
+    example_rows = [text for text in texts if text.startswith("example ")]
+    assert len(example_rows) == 12
+    assert "example 11\n예문 11" in texts
+    plain_labels = [
+        label
+        for label in dialog.findChildren(QtWidgets.QLabel)
+        if label.text() in {"school, <b>exam</b>", "중요 <b>단어</b>"}
+    ]
+    assert plain_labels
+    assert all(label.textFormat() == QtCore.Qt.PlainText for label in plain_labels)
 
 
 def test_entry_detail_word_list_reports_hidden_count(qtbot):

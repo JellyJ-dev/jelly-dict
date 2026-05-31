@@ -67,7 +67,16 @@ class AnkiSyncService:
         return total_deleted, errors
 
     def _deck_prefix_for(self, language: str | None) -> str:
-        base = (self._settings.ankiconnect_deck_prefix or "").strip()
+        default_prefix = Settings().ankiconnect_deck_prefix
+        configured = (self._settings.ankiconnect_deck_prefix or "").strip()
+        deck_base = (self._settings.default_deck_name or "").strip()
+        base = configured
+        if not base or base == default_prefix:
+            base = deck_base or default_prefix
         if language in ("en", "ja") and base:
-            return f"{base}::{language.upper()}"
+            suffix = language.upper()
+            parts = base.split("::")
+            if parts[-1].upper() in {"EN", "JA"}:
+                return "::".join([*parts[:-1], suffix])
+            return f"{base}::{suffix}"
         return base

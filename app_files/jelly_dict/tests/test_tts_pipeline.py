@@ -183,6 +183,34 @@ def test_pipeline_removes_empty_audio_after_provider_failure(
     assert not path.exists()
 
 
+def test_pipeline_removes_nonempty_audio_after_provider_failure(
+    isolated_runtime,
+    monkeypatch,
+):
+    class _BrokenPartial(_FakeProvider):
+        def synthesize(self, text, *, language, voice, out_path):
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(b"partial")
+            raise RuntimeError("boom")
+
+    _patch_registry(monkeypatch, _BrokenPartial)
+    from app.anki.tts.pipeline import TTSPipeline
+
+    s = _Settings()
+    path = tts_cache.cache_path(
+        "en",
+        "fake",
+        "v_en",
+        "hello",
+        bitrate=s.tts_bitrate,
+        sample_rate=s.tts_sample_rate,
+    )
+    pipeline = TTSPipeline(s)
+
+    assert pipeline.synthesize("hello", "en") is None
+    assert not path.exists()
+
+
 def test_pipeline_failure_swallowed(isolated_runtime, monkeypatch):
     class _Broken(_FakeProvider):
         def synthesize(self, text, *, language, voice, out_path):

@@ -49,3 +49,34 @@ def test_delete_words_keeps_base_prefix_when_language_unknown(monkeypatch):
     service.delete_words(["apple"], None)
 
     assert client.find_calls == [("JellyDict", "Word", "apple")]
+
+
+def test_delete_words_uses_export_deck_name_when_prefix_is_default(monkeypatch):
+    service = AnkiSyncService(
+        Settings(
+            default_deck_name="MyDeck",
+            ankiconnect_enabled=True,
+            ankiconnect_deck_prefix="JellyDict",
+        )
+    )
+    client = _FakeClient()
+    monkeypatch.setattr(service, "_client", lambda: client)
+
+    service.delete_words(["apple"], "ja")
+
+    assert client.find_calls == [("MyDeck::JA", "Word", "apple")]
+
+
+def test_delete_words_does_not_duplicate_language_suffix(monkeypatch):
+    service = AnkiSyncService(
+        Settings(
+            ankiconnect_enabled=True,
+            ankiconnect_deck_prefix="JellyDict::EN",
+        )
+    )
+    client = _FakeClient()
+    monkeypatch.setattr(service, "_client", lambda: client)
+
+    service.delete_words(["apple"], "en")
+
+    assert client.find_calls == [("JellyDict::EN", "Word", "apple")]

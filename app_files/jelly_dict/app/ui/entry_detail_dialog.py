@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+from urllib.parse import urlparse
 
 from PySide6 import QtCore, QtWidgets
 
@@ -34,6 +35,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
         title = QtWidgets.QLabel(_primary_form(self._entry.word))
         title.setObjectName("entryDetailTitle")
         title.setAlignment(QtCore.Qt.AlignCenter)
+        title.setTextFormat(QtCore.Qt.PlainText)
         title.setWordWrap(True)
         layout.addWidget(title)
 
@@ -42,6 +44,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
             reading_label = QtWidgets.QLabel(f"[{reading}]")
             reading_label.setObjectName("entryDetailReading")
             reading_label.setAlignment(QtCore.Qt.AlignCenter)
+            reading_label.setTextFormat(QtCore.Qt.PlainText)
             reading_label.setWordWrap(True)
             layout.addWidget(reading_label)
 
@@ -50,6 +53,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
             summary_label = QtWidgets.QLabel(first_gloss)
             summary_label.setObjectName("entryDetailSummary")
             summary_label.setAlignment(QtCore.Qt.AlignCenter)
+            summary_label.setTextFormat(QtCore.Qt.PlainText)
             summary_label.setWordWrap(True)
             layout.addWidget(summary_label)
 
@@ -63,6 +67,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
             meta_label = QtWidgets.QLabel(" · ".join(meta))
             meta_label.setObjectName("entryDetailMeta")
             meta_label.setAlignment(QtCore.Qt.AlignCenter)
+            meta_label.setTextFormat(QtCore.Qt.PlainText)
             layout.addWidget(meta_label)
 
         divider_top = QtWidgets.QFrame()
@@ -111,6 +116,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
                         continue
                     row = QtWidgets.QLabel(f"{sense.number or ''}. {text}".strip())
                     row.setObjectName("entryDetailSenseRow")
+                    row.setTextFormat(QtCore.Qt.PlainText)
                     row.setWordWrap(True)
                     layout.addWidget(row)
             return
@@ -121,6 +127,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
         for index, gloss in enumerate(_split_summary_senses(self._entry.meanings_summary), start=1):
             row = QtWidgets.QLabel(f"{index}. {gloss}")
             row.setObjectName("entryDetailSenseRow")
+            row.setTextFormat(QtCore.Qt.PlainText)
             row.setWordWrap(True)
             layout.addWidget(row)
 
@@ -137,6 +144,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
                 text += f"\n{ex.translation_ko}"
             row = QtWidgets.QLabel(text)
             row.setObjectName("entryDetailExampleRow")
+            row.setTextFormat(QtCore.Qt.PlainText)
             row.setWordWrap(True)
             layout.addWidget(row)
 
@@ -152,6 +160,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
             text += f" · 외 {len(words) - len(visible)}개"
         row = QtWidgets.QLabel(text)
         row.setObjectName("entryDetailSenseRow")
+        row.setTextFormat(QtCore.Qt.PlainText)
         row.setWordWrap(True)
         layout.addWidget(row)
 
@@ -164,6 +173,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
         layout.addWidget(label)
         row = QtWidgets.QLabel(text)
         row.setObjectName("entryDetailSenseRow")
+        row.setTextFormat(QtCore.Qt.PlainText)
         row.setWordWrap(True)
         layout.addWidget(row)
 
@@ -174,9 +184,10 @@ class EntryDetailDialog(QtWidgets.QDialog):
         label = QtWidgets.QLabel("출처")
         label.setObjectName("entryDetailSection")
         layout.addWidget(label)
+        shown = _display_url(url)
         row = QtWidgets.QLabel(
             f'<a style="color:#b55235; text-decoration:none;" href="{escape(url)}">'
-            f"{escape(url)}</a>"
+            f"{escape(shown)}</a>"
         )
         row.setObjectName("entryDetailSenseRow")
         row.setOpenExternalLinks(True)
@@ -191,6 +202,18 @@ def _provider_label(provider: str) -> str:
         "naver_ja": "네이버 일본어사전",
         "manual": "직접 입력",
     }.get(provider, "")
+
+
+def _display_url(url: str, limit: int = 72) -> str:
+    parsed = urlparse(url)
+    shown = (parsed.netloc + parsed.path).strip("/") if parsed.netloc else url
+    if parsed.query and len(shown) < limit:
+        shown = f"{shown}?{parsed.query}"
+    if len(shown) <= limit:
+        return shown
+    head = max(12, (limit - 1) // 2)
+    tail = max(12, limit - head - 1)
+    return f"{shown[:head]}…{shown[-tail:]}"
 
 
 def _primary_form(text: str) -> str:

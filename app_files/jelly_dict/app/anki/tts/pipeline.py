@@ -90,7 +90,7 @@ class TTSPipeline:
                     text, language=language, voice=voice, out_path=out_path,
                 )
             except Exception as exc:
-                _remove_partial_audio(out_path)
+                _remove_audio_file(out_path)
                 logger.warning(
                     "TTS synth failed (%s/%s): %s", name, language, type(exc).__name__,
                 )
@@ -129,6 +129,14 @@ class TTSPipeline:
 def _remove_partial_audio(path: Path) -> None:
     try:
         if path.exists() and path.stat().st_size <= 0:
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _remove_audio_file(path: Path) -> None:
+    try:
+        if path.exists():
             path.unlink()
     except OSError:
         pass
