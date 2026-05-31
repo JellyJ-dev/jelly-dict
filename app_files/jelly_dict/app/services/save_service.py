@@ -26,6 +26,7 @@ class SaveOutcome:
     status: str  # "saved" | "updated" | "merged" | "kept" | "appended_new"
     path: Path
     entry: VocabularyEntry
+    backup_path: Path | None = None
 
 
 class SaveService:
@@ -66,12 +67,14 @@ class SaveService:
                 return "append_new", resolved
             return "overwrite", resolved
 
-        action, written_entry = excel_writer.save_with_resolver(
+        write_outcome = excel_writer.save_with_resolver(
             path,
             entry,
             self._settings.excel_columns,
             resolver,
+            backup_on_overwrite=True,
         )
+        action, written_entry = write_outcome
 
         # Map (action, policy) → SaveOutcome.status.
         policy = policy_holder["policy"]
@@ -85,7 +88,12 @@ class SaveService:
             status = (
                 "merged" if policy == "merge_examples_and_memo" else "updated"
             )
-        return SaveOutcome(status=status, path=path, entry=written_entry)
+        return SaveOutcome(
+            status=status,
+            path=path,
+            entry=written_entry,
+            backup_path=write_outcome.backup_path,
+        )
 
     def _resolve_policy(
         self,

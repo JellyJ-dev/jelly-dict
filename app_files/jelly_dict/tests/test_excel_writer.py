@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import pickle
+import stat
 from pathlib import Path
 
+import pytest
 from openpyxl import load_workbook
 
+from app.core.errors import StorageError
 from app.core.models import (
     Example,
     MeaningGroup,
@@ -20,6 +24,7 @@ from app.storage.excel_writer import (
     delete_entries_with_backup,
     ensure_workbook,
     find_existing,
+    save_with_resolver,
     update_or_append,
 )
 from app.storage.settings_store import EXCEL_COLUMN_KEYS_DEFAULT
@@ -170,6 +175,208 @@ def test_backup_workbook_uses_user_visible_backup_folder(tmp_path: Path):
     assert backup.exists()
     assert backup.parent.name == "Jelly Dict Backups"
     assert ".manual-snapshot." in backup.name
+
+
+def test_save_with_resolver_backup_on_overwrite_preserves_previous_row(tmp_path: Path):
+    from app.storage.excel_writer import list_entries
+
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    updated = _entry_apple()
+    updated.memo = "second"
+
+    outcome = save_with_resolver(
+        path,
+        updated,
+        EXCEL_COLUMN_KEYS_DEFAULT,
+        lambda existing, candidate: ("overwrite", candidate),
+        backup_on_overwrite=True,
+    )
+
+    action, written = outcome
+    assert action == "overwrite"
+    assert written.memo == "second"
+    assert outcome.backup_path is not None
+    assert [entry.memo for entry in list_entries(outcome.backup_path)] == ["first"]
+    assert [entry.memo for entry in list_entries(path)] == ["second"]
+
+
+def test_save_with_resolver_two_value_unpacking_remains_supported(tmp_path: Path):
+    path = tmp_path / "vocab.xlsx"
+
+    outcome = save_with_resolver(
+        path,
+        VocabularyEntry(language="en", word="new"),
+        EXCEL_COLUMN_KEYS_DEFAULT,
+        lambda existing, candidate: ("create", candidate),
+    )
+
+    action, written = outcome
+    assert isinstance(outcome, tuple)
+    assert len(outcome) == 2
+    assert outcome[0] == "create"
+    assert outcome[1] == written
+    assert outcome == ("create", written)
+    assert action == "create"
+    assert written.word == "new"
+
+
+def test_write_outcome_pickle_round_trip_preserves_metadata(tmp_path: Path):
+    outcome = save_with_resolver(
+        tmp_path / "vocab.xlsx",
+        VocabularyEntry(language="en", word="new"),
+        EXCEL_COLUMN_KEYS_DEFAULT,
+        lambda existing, candidate: ("create", candidate),
+    )
+    outcome.backup_path = tmp_path / "backup.xlsx"
+
+    restored = pickle.loads(pickle.dumps(outcome))
+
+    assert isinstance(restored, tuple)
+    assert restored == outcome
+    assert restored.backup_path == tmp_path / "backup.xlsx"
+
+
+def test_atomic_save_preserves_existing_file_mode(tmp_path: Path):
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    path.chmod(0o640)
+    updated = _entry_apple()
+    updated.memo = "second"
+
+    save_with_resolver(
+        path,
+        updated,
+        EXCEL_COLUMN_KEYS_DEFAULT,
+        lambda existing, candidate: ("overwrite", candidate),
+        backup_on_overwrite=True,
+    )
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+def test_save_with_resolver_backup_failure_preserves_existing_workbook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.storage import excel_writer
+    from app.storage.excel_writer import list_entries
+
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    updated = _entry_apple()
+    updated.memo = "second"
+
+    def fail_copy(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(excel_writer.shutil, "copy2", fail_copy)
+
+    with pytest.raises(StorageError, match="Excel backup failed"):
+        save_with_resolver(
+            path,
+            updated,
+            EXCEL_COLUMN_KEYS_DEFAULT,
+            lambda existing, candidate: ("overwrite", candidate),
+            backup_on_overwrite=True,
+        )
+
+    assert [entry.memo for entry in list_entries(path)] == ["first"]
+
+
+def test_save_with_resolver_backup_mkdir_failure_is_storage_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.storage.excel_writer import list_entries
+
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    updated = _entry_apple()
+    updated.memo = "second"
+    original_mkdir = Path.mkdir
+
+    def fail_backup_mkdir(self, *args, **kwargs):
+        if self.name == "Jelly Dict Backups":
+            raise OSError("mkdir denied")
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", fail_backup_mkdir)
+
+    with pytest.raises(StorageError, match="Excel backup failed"):
+        save_with_resolver(
+            path,
+            updated,
+            EXCEL_COLUMN_KEYS_DEFAULT,
+            lambda existing, candidate: ("overwrite", candidate),
+            backup_on_overwrite=True,
+        )
+
+    assert [entry.memo for entry in list_entries(path)] == ["first"]
+
+
+def test_save_with_resolver_save_failure_mentions_backup_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.storage import excel_writer
+    from app.storage.excel_writer import list_entries
+
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    updated = _entry_apple()
+    updated.memo = "second"
+
+    def fail_save(wb, target):
+        raise StorageError("write failed")
+
+    monkeypatch.setattr(excel_writer, "_save", fail_save)
+
+    with pytest.raises(StorageError) as exc_info:
+        save_with_resolver(
+            path,
+            updated,
+            EXCEL_COLUMN_KEYS_DEFAULT,
+            lambda existing, candidate: ("overwrite", candidate),
+            backup_on_overwrite=True,
+        )
+
+    message = str(exc_info.value)
+    assert "write failed" in message
+    assert "백업 파일:" in message
+    assert "Jelly Dict Backups" in message
+    assert [entry.memo for entry in list_entries(path)] == ["first"]
+
+
+def test_save_with_resolver_replace_failure_preserves_existing_workbook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.storage.excel_writer import list_entries
+
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    updated = _entry_apple()
+    updated.memo = "second"
+
+    def fail_replace(self, target):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    with pytest.raises(StorageError) as exc_info:
+        save_with_resolver(
+            path,
+            updated,
+            EXCEL_COLUMN_KEYS_DEFAULT,
+            lambda existing, candidate: ("overwrite", candidate),
+            backup_on_overwrite=True,
+        )
+
+    message = str(exc_info.value)
+    assert "replace failed" in message
+    assert "백업 파일:" in message
+    assert [entry.memo for entry in list_entries(path)] == ["first"]
 
 
 def test_delete_entries_noop_when_keys_missing(tmp_path: Path):

@@ -683,7 +683,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._start_saved_words_cache_load()
 
-        self.status.showMessage(f"저장됨 ({outcome.status}) → {outcome.path}")
+        message = f"저장됨 ({outcome.status}) → {outcome.path}"
+        if outcome.backup_path is not None:
+            message += f" · 백업: {outcome.backup_path}"
+        self.status.showMessage(message)
         self._return_to_input()
         self._refresh_recent()
         self._schedule_next_queued_lookup()

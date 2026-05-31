@@ -26,6 +26,7 @@ def test_first_save_creates_file_and_appends(tmp_path: Path):
     outcome = service.save(VocabularyEntry(language="en", word="apple"))
     assert outcome.status == "saved"
     assert outcome.path.exists()
+    assert outcome.backup_path is None
 
 
 def test_duplicate_with_update_policy_replaces_row(tmp_path: Path):
@@ -34,6 +35,30 @@ def test_duplicate_with_update_policy_replaces_row(tmp_path: Path):
     outcome = service.save(VocabularyEntry(language="en", word="apple", memo="v2"))
     assert outcome.status == "updated"
     assert outcome.entry.memo == "v2"
+    assert outcome.backup_path is not None
+    assert outcome.backup_path.exists()
+
+    from app.storage.excel_writer import list_entries
+
+    backup_entries = list_entries(outcome.backup_path)
+    assert len(backup_entries) == 1
+    assert backup_entries[0].memo == "v1"
+
+
+def test_duplicate_with_merge_policy_backs_up_original_row(tmp_path: Path):
+    service = SaveService(_settings(tmp_path, policy="merge_examples_and_memo"))
+    service.save(VocabularyEntry(language="en", word="apple", memo="v1"))
+    outcome = service.save(VocabularyEntry(language="en", word="apple", memo="v2"))
+    assert outcome.status == "merged"
+    assert outcome.entry.memo == "v1\n---\nv2"
+    assert outcome.backup_path is not None
+    assert outcome.backup_path.exists()
+
+    from app.storage.excel_writer import list_entries
+
+    backup_entries = list_entries(outcome.backup_path)
+    assert len(backup_entries) == 1
+    assert backup_entries[0].memo == "v1"
 
 
 def test_duplicate_with_keep_existing_skips(tmp_path: Path):
@@ -42,6 +67,7 @@ def test_duplicate_with_keep_existing_skips(tmp_path: Path):
     outcome = service.save(VocabularyEntry(language="en", word="apple", memo="v2"))
     assert outcome.status == "kept"
     assert outcome.entry.memo == "v1"
+    assert outcome.backup_path is None
 
 
 def test_duplicate_prompt_invoked(tmp_path: Path):

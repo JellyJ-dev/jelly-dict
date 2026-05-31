@@ -9,6 +9,7 @@ keep working without import changes.
 from __future__ import annotations
 
 import shutil
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
@@ -42,6 +43,7 @@ __all__ = [
     "HEADER_FILL",
     "HEADER_FONT",
     "DeleteOutcome",
+    "WriteOutcome",
     "ensure_workbook",
     "append_entry",
     "update_or_append",
@@ -58,6 +60,39 @@ __all__ = [
 class DeleteOutcome:
     removed: int
     backup_path: Path | None = None
+
+
+class WriteOutcome(tuple):
+    """Tuple-compatible result with optional backup metadata."""
+
+    backup_path: Path | None
+
+    def __new__(
+        cls,
+        action: str,
+        entry: VocabularyEntry,
+        backup_path: Path | None = None,
+    ):
+        obj = super().__new__(cls, (action, entry))
+        obj.backup_path = backup_path
+        return obj
+
+    @property
+    def action(self) -> str:
+        return self[0]
+
+    @property
+    def entry(self) -> VocabularyEntry:
+        return self[1]
+
+    def __repr__(self) -> str:
+        return (
+            f"WriteOutcome(action={self.action!r}, entry={self.entry!r}, "
+            f"backup_path={self.backup_path!r})"
+        )
+
+    def __getnewargs__(self):
+        return (self.action, self.entry, self.backup_path)
 
 
 def ensure_workbook(path: Path, columns: list[str]) -> None:
@@ -129,10 +164,10 @@ def backup_workbook(path: Path, reason: str = "manual") -> Path:
         for ch in (reason or "manual").strip().lower()
     ).strip("-") or "manual"
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
-    backup_dir = path.parent / "Jelly Dict Backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_dir / f"{path.stem}.{safe_reason}.{timestamp}{path.suffix}"
     try:
+        backup_dir = path.parent / "Jelly Dict Backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = backup_dir / f"{path.stem}.{safe_reason}.{timestamp}{path.suffix}"
         shutil.copy2(path, backup_path)
     except OSError as exc:
         raise StorageError(f"Excel backup failed: {exc}") from exc
@@ -192,6 +227,8 @@ def save_with_resolver(
     entry: VocabularyEntry,
     columns: list[str],
     resolver,
+    *,
+    backup_on_overwrite: bool = False,
 ):
     """Single-workbook-load save path with explicit action protocol.
 
@@ -202,7 +239,9 @@ def save_with_resolver(
       - "append_new"  — duplicate found; append as an extra row
       - "skip"        — duplicate found; keep existing, write nothing
 
-    Returns ``(action, written_entry)``. For "skip", written_entry is the
+    Returns a tuple-compatible ``WriteOutcome`` that still supports legacy
+    tuple operations like ``result[0]``, ``len(result)``, equality checks, and
+    ``(action, written_entry)`` unpacking. For "skip", written_entry is the
     existing row read back from the sheet.
 
     Workbook is opened once, mutated in-place, and saved exactly once.
@@ -234,10 +273,13 @@ def save_with_resolver(
 
     if action == "skip":
         # Workbook unchanged — don't bother saving.
-        return action, existing_entry or entry
+        return WriteOutcome(action, existing_entry or entry)
 
     values = [_render_cell(resolved, key) for key in file_columns]
+    backup_path = None
     if action == "overwrite" and existing_row is not None:
+        if backup_on_overwrite:
+            backup_path = backup_workbook(path, f"overwrite-{entry.language}")
         for col_idx, value in enumerate(values, start=1):
             ws.cell(row=existing_row, column=col_idx, value=value)
         _style_row(ws, existing_row, file_columns)
@@ -245,8 +287,13 @@ def save_with_resolver(
         # "create" or "append_new" both result in a new row at the end.
         ws.append(values)
         _style_last_row(ws, file_columns)
-    _save(wb, path)
-    return action, resolved
+    try:
+        _save(wb, path)
+    except StorageError as exc:
+        if backup_path is not None:
+            _raise_with_backup_hint(exc, backup_path)
+        raise
+    return WriteOutcome(action, resolved, backup_path)
 
 
 # ---------- internal helpers (private) ----------------------------
@@ -262,12 +309,48 @@ def _load_for_write(path: Path) -> Workbook:
 
 
 def _save(wb: Workbook, path: Path) -> None:
+    temp_name = ""
     try:
-        wb.save(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            dir=path.parent,
+            prefix=f".{path.stem}.",
+            suffix=path.suffix,
+        ) as temp_file:
+            temp_name = temp_file.name
+        temp_path = Path(temp_name)
+        wb.save(temp_path)
+        _copy_existing_permissions(path, temp_path)
+        temp_path.replace(path)
     except PermissionError as exc:
         raise ExcelLockedError(str(exc)) from exc
     except OSError as exc:
         raise StorageError(str(exc)) from exc
+    finally:
+        if temp_name:
+            temp_path = Path(temp_name)
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    log.warning("failed to clean temporary workbook: %s", temp_path)
+
+
+def _copy_existing_permissions(source: Path, target: Path) -> None:
+    if not source.exists():
+        return
+    try:
+        shutil.copymode(source, target)
+    except OSError:
+        log.warning("failed to preserve workbook permissions: %s", source)
+
+
+def _raise_with_backup_hint(exc: StorageError, backup_path: Path) -> None:
+    message = f"{exc}\n백업 파일: {backup_path}"
+    if isinstance(exc, ExcelLockedError):
+        raise ExcelLockedError(message) from exc
+    raise StorageError(message) from exc
 
 
 def _write_header(ws, columns: list[str]) -> None:
