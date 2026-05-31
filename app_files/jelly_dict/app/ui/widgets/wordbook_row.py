@@ -110,7 +110,6 @@ class WordbookRow(QtWidgets.QFrame):
         self.action_bar.setVisible(visible)
         if visible:
             self._place_action_bar()
-            QtCore.QTimer.singleShot(0, self._place_action_bar)
             self.action_bar.raise_()
         count_text = f"선택 {selected_count}개" if selected_count > 1 else self._word
         self.requery_button.setToolTip(f"{count_text} 다시 조회")
@@ -138,9 +137,3 @@ class WordbookRow(QtWidgets.QFrame):
             max(12, self.width() - self.action_bar.width() - 12),
             7,
         )
-
-
-def wordbook_tooltip(language: str, word: str, reading: str, hint: str) -> str:
-    if language == "ja" and reading:
-        return f"{word}\n{reading}\n{hint}".strip()
-    return f"{word}\n{hint}".strip()

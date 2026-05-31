@@ -8,9 +8,15 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.widgets.anki_export_button import AnkiExportButton
 from app.ui.widgets.language_menu_item import LanguageMenuItem
-from app.ui.widgets.wordbook_row import WordbookRow, wordbook_tooltip
+from app.ui.widgets.wordbook_items import (
+    WordbookDisplayItem,
+    WordbookItem,
+    coerce_wordbook_item,
+    filter_wordbook_items,
+    wordbook_tooltip,
+)
+from app.ui.widgets.wordbook_row import WordbookRow
 
-WordbookItem = tuple[str, str, str, str]  # word, language, reading, meaning hint
 NORMAL_LIST_HEIGHT = 320
 RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resources"
 RECENT_EMPTY_TEXT = "최근 기록 없음"
@@ -237,7 +243,7 @@ class WordInputView(QtWidgets.QWidget):
         self._forced_language = ""
         self._list_mode = "recent"
         self._recent_items: list[tuple[str, str, str, str]] = []
-        self._wordbook_items: list[WordbookItem] = []
+        self._wordbook_items: list[WordbookDisplayItem] = []
         self._wordbook_expanded = False
         self._lookup_busy = False
         self._ocr_tokens: list[str] = []
@@ -1151,7 +1157,7 @@ class WordInputView(QtWidgets.QWidget):
     def set_wordbook(self, language: str, items: list[WordbookItem]) -> None:
         previous_mode = self._list_mode
         self._list_mode = language
-        self._wordbook_items = list(items)
+        self._wordbook_items = [coerce_wordbook_item(item) for item in items]
         title = "일본어 단어장" if language == "ja" else "영어 단어장"
         self.recent_title_btn.setText(title)
         self.top_area.setVisible(not self._wordbook_expanded)
@@ -1165,12 +1171,12 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_requery_btn.setVisible(False)
         self.wordbook_copy_btn.setVisible(False)
         self.wordbook_export_btn.setVisible(True)
-        self.wordbook_export_btn.setEnabled(bool(items))
+        self.wordbook_export_btn.setEnabled(bool(self._wordbook_items))
         self.wordbook_export_btn.set_language(language)
         self.wordbook_delete_btn.setVisible(False)
         self.wordbook_delete_btn.setEnabled(False)
         self._search_debounce.stop()
-        self.wordbook_search.setPlaceholderText("단어 / 뜻 검색...")
+        self.wordbook_search.setPlaceholderText("단어 / 뜻 / 태그 / 메모 검색...")
         if previous_mode != language:
             self.wordbook_search.clear()
         self.wordbook_search.setVisible(True)
@@ -1212,32 +1218,28 @@ class WordInputView(QtWidgets.QWidget):
                 self._on_list_selection_changed()
                 return
             for i in range(min(current, target)):
-                word, item_language, reading, hint = items[i]
+                item = items[i]
                 qt_item = self.recent_list.item(i)
                 qt_item.setText("")
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
-                qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
-                qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
+                qt_item.setData(QtCore.Qt.UserRole, (item.word, item.language))
+                qt_item.setToolTip(wordbook_tooltip(item))
                 qt_item.setSizeHint(QtCore.QSize(620, 62))
-                self.recent_list.setItemWidget(
-                    qt_item,
-                    self._build_wordbook_row(item_language, word, reading, hint),
-                )
+                self._set_wordbook_row_widget(qt_item, item)
             # Append any extra rows.
             for i in range(current, target):
-                word, item_language, reading, hint = items[i]
+                item = items[i]
                 qt_item = QtWidgets.QListWidgetItem()
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
-                qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
-                qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
+                qt_item.setData(QtCore.Qt.UserRole, (item.word, item.language))
+                qt_item.setToolTip(wordbook_tooltip(item))
                 qt_item.setSizeHint(QtCore.QSize(620, 62))
                 self.recent_list.addItem(qt_item)
-                self.recent_list.setItemWidget(
-                    qt_item,
-                    self._build_wordbook_row(item_language, word, reading, hint),
-                )
+                self._set_wordbook_row_widget(qt_item, item)
             # Drop trailing rows from the previous render.
             while self.recent_list.count() > target:
+                trailing_item = self.recent_list.item(self.recent_list.count() - 1)
+                self._remove_wordbook_row_widget(trailing_item)
                 self.recent_list.takeItem(self.recent_list.count() - 1)
         finally:
             self.recent_list.setUpdatesEnabled(True)
@@ -1245,27 +1247,32 @@ class WordInputView(QtWidgets.QWidget):
 
     def _build_wordbook_row(
         self,
-        language: str,
-        word: str,
-        reading: str,
-        hint: str,
+        item: WordbookDisplayItem,
     ) -> WordbookRow:
-        row = WordbookRow(language, word, reading, hint)
+        row = WordbookRow(item.language, item.word, item.reading, item.hint)
         row.requeryRequested.connect(self._requery_wordbook_from_row)
         row.copyRequested.connect(self._copy_wordbook_from_row)
         row.deleteRequested.connect(self._delete_wordbook_from_row)
         return row
 
-    def _filtered_wordbook_items(self, needle: str) -> list[WordbookItem]:
-        if not needle:
-            return list(self._wordbook_items)
-        return [
-            item
-            for item in self._wordbook_items
-            if needle in item[0].lower()
-            or needle in item[2].lower()
-            or needle in item[3].lower()
-        ]
+    def _set_wordbook_row_widget(
+        self,
+        qt_item: QtWidgets.QListWidgetItem,
+        item: WordbookDisplayItem,
+    ) -> None:
+        self._remove_wordbook_row_widget(qt_item)
+        self.recent_list.setItemWidget(qt_item, self._build_wordbook_row(item))
+
+    def _remove_wordbook_row_widget(self, qt_item: QtWidgets.QListWidgetItem) -> None:
+        old_widget = self.recent_list.itemWidget(qt_item)
+        if old_widget is not None:
+            self.recent_list.removeItemWidget(qt_item)
+            old_widget.hide()
+            old_widget.setParent(None)
+            old_widget.deleteLater()
+
+    def _filtered_wordbook_items(self, needle: str) -> list[WordbookDisplayItem]:
+        return filter_wordbook_items(self._wordbook_items, needle)
 
     def _add_empty_list_item(self, text: str, height: int) -> None:
         item = QtWidgets.QListWidgetItem(text)

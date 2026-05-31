@@ -10,6 +10,7 @@ from app.ui.word_input_view import (
     WordInputView,
     split_bulk_input,
 )
+from app.ui.widgets.wordbook_items import WordbookDisplayItem
 from app.ui.widgets.wordbook_row import WordbookRow
 
 
@@ -101,6 +102,115 @@ def test_wordbook_filter_empty_state_preserves_export(qtbot):
     assert not _is_selectable(view.recent_list.item(0))
     assert view.wordbook_export_btn.isEnabled()
     assert not view.wordbook_delete_btn.isEnabled()
+
+
+def test_wordbook_search_matches_hidden_metadata_without_extra_row_ui(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook(
+        "en",
+        [
+            WordbookDisplayItem(
+                "apple",
+                "en",
+                "",
+                "사과",
+                tags=("exam", "fruit"),
+                memo="중요 단어",
+                examples=("An apple a day keeps the doctor away 사과 하나",),
+            ),
+            WordbookDisplayItem("banana", "en", "", "바나나"),
+        ],
+    )
+
+    view.wordbook_search.setText("exam 중요")
+    view._search_debounce.stop()
+    view._render_wordbook()
+
+    assert view.recent_list.count() == 1
+    assert view.recent_list.item(0).data(QtCore.Qt.UserRole) == ("apple", "en")
+    assert view.recent_list.item(0).sizeHint().height() == 62
+    row = view.recent_list.itemWidget(view.recent_list.item(0))
+    assert isinstance(row, WordbookRow)
+    assert len(view.recent_list.findChildren(WordbookRow)) == 1
+    assert row.findChildren(QtWidgets.QLabel, "wordbookWord")
+    assert not row.findChildren(QtWidgets.QLabel, "wordbookBadge")
+
+
+def test_wordbook_search_matches_example_only_text(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook(
+        "en",
+        [
+            WordbookDisplayItem(
+                "apple",
+                "en",
+                "",
+                "사과",
+                examples=("orchard sentence only appears here",),
+            ),
+            WordbookDisplayItem("banana", "en", "", "바나나"),
+        ],
+    )
+
+    view.wordbook_search.setText("orchard")
+    view._search_debounce.stop()
+    view._render_wordbook()
+
+    assert view.recent_list.count() == 1
+    assert view.recent_list.item(0).data(QtCore.Qt.UserRole) == ("apple", "en")
+
+
+def test_wordbook_search_does_not_match_language_code_for_every_row(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook(
+        "en",
+        [
+            WordbookDisplayItem("apple", "en", "", "사과"),
+            WordbookDisplayItem("banana", "en", "", "바나나"),
+        ],
+    )
+
+    view.wordbook_search.setText("en")
+    view._search_debounce.stop()
+    view._render_wordbook()
+
+    assert view.recent_list.count() == 1
+    assert view.recent_list.item(0).text() == WORDBOOK_FILTER_EMPTY_TEXT
+
+
+def test_wordbook_tooltip_exposes_metadata_without_visible_badges(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook(
+        "ja",
+        [
+            WordbookDisplayItem(
+                "月日",
+                "ja",
+                "つきひ",
+                "세월",
+                tags=("review",),
+                memo="시험 전 복습",
+                examples=("月日が流れる 시간이 흐른다",),
+                updated_at="2026-05-31T12:00:00+00:00",
+            )
+        ],
+    )
+
+    tooltip = view.recent_list.item(0).toolTip()
+
+    assert "月日" in tooltip
+    assert "つきひ" in tooltip
+    assert "태그: review" in tooltip
+    assert "메모: 시험 전 복습" in tooltip
+    assert "예문 1개:" in tooltip
+    assert "수정: 2026-05-31" in tooltip
+    row = view.recent_list.itemWidget(view.recent_list.item(0))
+    assert isinstance(row, WordbookRow)
+    assert not row.findChildren(QtWidgets.QLabel, "wordbookBadge")
 
 
 def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot):
@@ -232,7 +342,7 @@ def test_switching_from_recent_to_wordbook_resets_search_context(qtbot):
 
     view.set_wordbook("en", [("apple", "en", "", "사과")])
 
-    assert view.wordbook_search.placeholderText() == "단어 / 뜻 검색..."
+    assert view.wordbook_search.placeholderText() == "단어 / 뜻 / 태그 / 메모 검색..."
     assert view.wordbook_search.text() == ""
     assert view.recent_list.count() == 1
 

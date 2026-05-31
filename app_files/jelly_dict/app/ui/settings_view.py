@@ -67,12 +67,15 @@ class SettingsDialog(QtWidgets.QDialog):
         self._network_test_worker: QtCore.QObject | None = None
         self._status_thread: QtCore.QThread | None = None
         self._status_worker: _SettingsStatusWorker | None = None
+        self._status_probe_timer = QtCore.QTimer(self)
+        self._status_probe_timer.setSingleShot(True)
+        self._status_probe_timer.timeout.connect(self._start_status_probe)
         # Keep TTS provider instances alive across clicks so the heavy
         # KPipeline (~327MB torch.load) is built only once per session.
         self._tts_provider_cache: dict[str, object] = {}
         self._build_ui()
         self._load(initial_settings or store.load())
-        QtCore.QTimer.singleShot(0, self._start_status_probe)
+        self._status_probe_timer.start(0)
 
     # ── layout ─────────────────────────────────────────────────────
     def _build_ui(self) -> None:
@@ -863,6 +866,8 @@ class SettingsDialog(QtWidgets.QDialog):
             return False
 
     def _wait_for_status_probe(self) -> None:
+        if self._status_probe_timer.isActive():
+            self._status_probe_timer.stop()
         if self._status_thread is None:
             return
         try:

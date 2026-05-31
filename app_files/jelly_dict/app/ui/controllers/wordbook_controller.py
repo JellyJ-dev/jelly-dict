@@ -11,15 +11,32 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
-from app.core.models import normalize_word_key, wordbook_meaning_hint
+from app.core.models import (
+    collect_examples_flat,
+    normalize_word_key,
+    wordbook_meaning_hint,
+)
 from app.services.anki_sync_service import AnkiSyncService
 from app.storage import excel_writer
 from app.storage.cache_store import CacheStore
 from app.storage.settings_store import Settings
 from app.ui.entry_detail_dialog import EntryDetailDialog
 from app.ui.word_input_view import WordInputView
+from app.ui.widgets.wordbook_items import WordbookDisplayItem
 
 log = logging.getLogger(__name__)
+
+
+def _entry_example_texts(entry) -> tuple[str, ...]:
+    examples = entry.examples_flat or collect_examples_flat(entry)
+    texts: list[str] = []
+    for example in examples:
+        source = (example.source_text_plain or example.source_text or "").strip()
+        translation = (example.translation_ko or "").strip()
+        text = " ".join(part for part in (source, translation) if part)
+        if text:
+            texts.append(text)
+    return tuple(texts)
 
 
 class WordbookController:
@@ -91,9 +108,17 @@ class WordbookController:
         else:  # "최신순"
             entries = list(reversed(filtered))
 
-        items: list[tuple[str, str, str, str]] = [
-            (entry.word, language, entry.reading or "",
-             wordbook_meaning_hint(entry, limit=160))
+        items = [
+            WordbookDisplayItem(
+                word=entry.word,
+                language=language,
+                reading=entry.reading or "",
+                hint=wordbook_meaning_hint(entry, limit=160),
+                tags=tuple(tag for tag in entry.tags if tag.strip()),
+                memo=entry.memo or "",
+                examples=_entry_example_texts(entry),
+                updated_at=entry.updated_at or entry.created_at,
+            )
             for entry in entries
         ]
         self._input_view.set_wordbook(language, items)
