@@ -7,6 +7,10 @@ QScrollArea#inputScroll, QScrollArea#inputScroll > QWidget > QWidget {
     background: #1b1b1a;
     border: none;
 }
+QScrollArea#previewScroll, QScrollArea#previewScroll > QWidget > QWidget {
+    background: #1b1b1a;
+    border: none;
+}
 QMenuBar {
     background: #1b1b1a;
     color: #e7e1d6;

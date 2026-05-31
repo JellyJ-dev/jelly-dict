@@ -142,7 +142,7 @@ class SettingsStore:
         valid_keys = {f.name for f in fields(Settings)}
         for key, value in raw.items():
             if key in valid_keys:
-                setattr(merged, key, value)
+                setattr(merged, key, _coerce_setting_value(key, value, getattr(merged, key)))
         self._cache = merged
         return merged
 
@@ -194,3 +194,57 @@ class SettingsStore:
         except OSError:
             return None
         return backup_path
+
+
+_ALLOWED_VALUES = {
+    "duplicate_policy": {
+        "ask",
+        "keep_existing",
+        "update_existing",
+        "merge_examples_and_memo",
+        "add_as_new",
+    },
+    "provider": {"naver_crawler"},
+    "ocr_provider": {"apple_vision", "google_vision"},
+    "anki_export_confirm_mode": {"smart", "always", "never"},
+    "last_apkg_export_audio_policy": {
+        "settings",
+        "force_tts",
+        "no_tts",
+        "remove_audio",
+    },
+}
+
+
+def _coerce_setting_value(key: str, value: Any, default: Any) -> Any:
+    if key in _ALLOWED_VALUES:
+        return value if isinstance(value, str) and value in _ALLOWED_VALUES[key] else default
+    if isinstance(default, bool):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"true", "1", "yes", "on"}:
+                return True
+            if lowered in {"false", "0", "no", "off"}:
+                return False
+        return default
+    if isinstance(default, float):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+    if isinstance(default, int) and not isinstance(default, bool):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+    if isinstance(default, list):
+        if isinstance(value, list) and all(isinstance(v, str) for v in value):
+            return value
+        return default
+    if default is None:
+        return value if value is None or isinstance(value, bool) else default
+    if isinstance(default, str):
+        return value if isinstance(value, str) else default
+    return value

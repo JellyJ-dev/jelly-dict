@@ -59,3 +59,18 @@ def test_entry_detail_word_list_reports_hidden_count(qtbot):
     texts = _label_texts(dialog)
 
     assert any("외 2개" in text for text in texts)
+
+
+def test_entry_detail_preserves_full_word_when_title_uses_primary_form(qtbot):
+    entry = VocabularyEntry(
+        language="ja",
+        word="月日・歳月",
+        meanings_summary="1.세월",
+    )
+    dialog = EntryDetailDialog(entry)
+    qtbot.addWidget(dialog)
+
+    texts = _label_texts(dialog)
+
+    assert "月日" in texts
+    assert "月日・歳月" in texts

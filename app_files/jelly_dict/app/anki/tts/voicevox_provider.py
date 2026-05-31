@@ -16,6 +16,7 @@ import urllib.request
 from pathlib import Path
 
 from app.anki.tts.base import ProviderInfo, TTSResult
+from app.core.url_safety import require_loopback_http_url
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +85,11 @@ class VoicevoxProvider:
         import urllib.request
 
         try:
+            require_loopback_http_url(url, "VOICEVOX")
             req = urllib.request.Request(f"{url.rstrip('/')}/version")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return resp.status == 200
-        except (urllib.error.URLError, OSError, TimeoutError):
+        except (ValueError, urllib.error.URLError, OSError, TimeoutError):
             return False
 
     @classmethod
@@ -107,6 +109,7 @@ class VoicevoxProvider:
         import urllib.request
 
         try:
+            require_loopback_http_url(url, "VOICEVOX")
             req = urllib.request.Request(f"{url.rstrip('/')}/speakers")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 if resp.status != 200:
@@ -132,7 +135,10 @@ class VoicevoxProvider:
 
     def __init__(self, settings) -> None:
         self._settings = settings
-        self._url = getattr(settings, "voicevox_url", "http://127.0.0.1:50021").rstrip("/")
+        self._url = require_loopback_http_url(
+            getattr(settings, "voicevox_url", "http://127.0.0.1:50021"),
+            "VOICEVOX",
+        ).rstrip("/")
 
     def _speaker_id(self, voice: str) -> int:
         # Voice format is "<id>:<display>" — parse the id.

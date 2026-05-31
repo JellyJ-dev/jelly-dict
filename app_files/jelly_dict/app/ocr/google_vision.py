@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from app.core.url_safety import require_google_vision_endpoint
 from app.ocr.base import OcrResult, OcrToken, normalize_ocr_tokens
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ class GoogleVisionOcrProvider:
             raise ValueError("api_key is required")
         # Hold the key as a private attribute. ``__repr__`` is masked below.
         self._api_key = api_key
-        self._endpoint = endpoint
+        self._endpoint = require_google_vision_endpoint(endpoint)
 
     def __repr__(self) -> str:
         return "GoogleVisionOcrProvider(api_key=***)"
@@ -85,6 +86,7 @@ def test_api_key(api_key: str, endpoint: str) -> None:
     """Make a tiny Google Vision request to validate a user-provided key."""
     if not api_key:
         raise RuntimeError("키 미설정")
+    endpoint = require_google_vision_endpoint(endpoint)
 
     tiny_png = base64.b64decode(_TINY_PNG_BASE64)
     body = json.dumps(

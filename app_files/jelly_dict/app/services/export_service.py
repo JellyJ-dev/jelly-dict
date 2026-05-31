@@ -87,7 +87,7 @@ class ExportService:
 
     def _excel_path(self, language: str) -> Path | None:
         path_str = self._settings.excel_path_for(language)
-        return Path(path_str) if path_str else None
+        return Path(path_str).expanduser() if path_str else None
 
     def _row_to_entry(self, data: dict) -> VocabularyEntry:
         word = str(data.get("word", "")).strip()

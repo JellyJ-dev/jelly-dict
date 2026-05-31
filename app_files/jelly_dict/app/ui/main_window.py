@@ -193,14 +193,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preview_view = PreviewEditorView()
         self.preview_view.saveRequested.connect(self._on_preview_save)
         self.preview_view.cancelled.connect(self._on_preview_cancelled)
+        preview_scroll = QtWidgets.QScrollArea()
+        preview_scroll.setObjectName("previewScroll")
+        preview_scroll.setWidgetResizable(True)
+        preview_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        preview_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        preview_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        preview_scroll.setWidget(self.preview_view)
 
         self.stack = QtWidgets.QStackedLayout()
         wrapper = QtWidgets.QWidget()
         wrapper.setLayout(self.stack)
         self.stack.addWidget(input_scroll)
-        self.stack.addWidget(self.preview_view)
+        self.stack.addWidget(preview_scroll)
         root.addWidget(wrapper, 1)
         self._input_page = input_scroll
+        self._preview_page = preview_scroll
 
         self.status = self.statusBar()
         self.status.showMessage("준비됨")
@@ -706,7 +714,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _present_entry(self, entry: VocabularyEntry, force_preview: bool = False) -> None:
         if self._settings.show_preview or force_preview:
             self.preview_view.set_entry(entry)
-            self.stack.setCurrentWidget(self.preview_view)
+            self.stack.setCurrentWidget(self._preview_page)
         else:
             self._save_entry(entry)
 

@@ -78,7 +78,11 @@ class ExportController(QtCore.QObject):
     # ---------- public entry points -----------------------------------
 
     def export_tsv(self, language: str) -> None:
-        default = Path(self._settings.anki_path_for(language)).with_suffix(".tsv")
+        default = (
+            Path(self._settings.anki_path_for(language))
+            .expanduser()
+            .with_suffix(".tsv")
+        )
         path_str, _ = QtWidgets.QFileDialog.getSaveFileName(
             self._parent,
             f"Anki TSV 저장 ({language})",
@@ -100,7 +104,7 @@ class ExportController(QtCore.QObject):
         audio_policy: AudioPolicy = "settings",
         force_options: bool = False,
     ) -> None:
-        default = Path(self._settings.anki_path_for(language))
+        default = Path(self._settings.anki_path_for(language)).expanduser()
         path_str, _ = QtWidgets.QFileDialog.getSaveFileName(
             self._parent,
             f"Anki APKG 저장 ({language})",

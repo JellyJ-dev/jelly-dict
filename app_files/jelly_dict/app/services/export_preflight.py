@@ -40,7 +40,7 @@ def run_export_preflight(
     output_path: Path,
 ) -> PreflightResult:
     issues: list[PreflightIssue] = []
-    excel_path = Path(settings.excel_path_for(plan.language))
+    excel_path = Path(settings.excel_path_for(plan.language)).expanduser()
     if not excel_path.exists():
         issues.append(PreflightIssue("block", "Excel 단어장 파일을 찾을 수 없습니다."))
     if plan.card_count == 0:

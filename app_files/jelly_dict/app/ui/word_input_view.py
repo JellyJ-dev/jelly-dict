@@ -584,6 +584,9 @@ class WordInputView(QtWidgets.QWidget):
         has_text = bool(text.strip())
         should_show = has_text and not self._lookup_busy
         should_spin = self._lookup_busy
+        self.lookup_btn.setText(
+            "일괄 조회" if len(split_bulk_input(text)) > 1 else "조회"
+        )
         self.lookup_btn.setVisible(should_show)
         self.lookup_busy.setVisible(should_spin)
         self.lookup_spinner.set_running(should_spin)
@@ -850,7 +853,7 @@ class WordInputView(QtWidgets.QWidget):
                 widget.deleteLater()
         self._ocr_chip_buttons = {}
         for token in self._ocr_tokens:
-            button = OcrCandidateChip(token)
+            button = OcrCandidateChip(_elide(token, 28))
             button.setObjectName("ocrChipButton")
             button.setToolTip(f"'{token}' (클릭: 선택, 더블클릭: 편집, 우클릭: 삭제)")
             if selectable:
@@ -1050,13 +1053,13 @@ class WordInputView(QtWidgets.QWidget):
             if status == "running":
                 chip = QtWidgets.QPushButton()
                 chip.setObjectName("queueChipRunning")
-                chip.setText(f"진행 · {word}")
+                chip.setText(f"진행 · {_elide(word, 22)}")
                 chip.setCursor(QtCore.Qt.ArrowCursor)
                 chip.setToolTip(f"'{word}' (조회 중...)")
             elif status == "failed":
                 chip = QueueJobChip()
                 chip.setObjectName("queueChipFailed")
-                chip.setText(f"실패 · {word}")
+                chip.setText(f"실패 · {_elide(word, 22)}")
                 chip.setCursor(QtCore.Qt.PointingHandCursor)
                 chip.setToolTip(f"'{word}' (조회 실패. 클릭: 재시도, 우클릭: 삭제)")
                 chip.clicked.connect(lambda checked=False, jid=job_id: self.jobRetryRequested.emit(jid))
@@ -1064,7 +1067,7 @@ class WordInputView(QtWidgets.QWidget):
             else:
                 chip = QtWidgets.QPushButton()
                 chip.setObjectName("queueChipPending")
-                chip.setText(word)
+                chip.setText(_elide(word, 24))
                 chip.setCursor(QtCore.Qt.PointingHandCursor)
                 chip.setToolTip(f"'{word}' (대기열에서 취소하려면 클릭)")
                 chip.clicked.connect(lambda checked=False, jid=job_id: self.jobCancelRequested.emit(jid))

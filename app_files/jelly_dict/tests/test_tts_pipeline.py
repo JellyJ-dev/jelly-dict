@@ -243,3 +243,11 @@ def test_no_tts_provider_raises_on_synth():
     p = NoTTSProvider()
     with pytest.raises(RuntimeError):
         p.synthesize("x", language="en", voice="v", out_path=Path("/tmp/x"))
+
+
+def test_voicevox_rejects_remote_url():
+    from app.anki.tts.voicevox_provider import VoicevoxProvider
+
+    assert VoicevoxProvider.is_running("https://example.com:50021") is False
+    with pytest.raises(ValueError, match="localhost"):
+        VoicevoxProvider(type("S", (), {"voicevox_url": "https://example.com:50021"})())

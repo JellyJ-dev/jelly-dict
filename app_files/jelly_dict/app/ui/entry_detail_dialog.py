@@ -39,6 +39,16 @@ class EntryDetailDialog(QtWidgets.QDialog):
         title.setWordWrap(True)
         layout.addWidget(title)
 
+        full_form = (self._entry.word or "").strip()
+        primary = _primary_form(full_form)
+        if full_form and full_form != primary:
+            full_label = QtWidgets.QLabel(full_form)
+            full_label.setObjectName("entryDetailMeta")
+            full_label.setAlignment(QtCore.Qt.AlignCenter)
+            full_label.setTextFormat(QtCore.Qt.PlainText)
+            full_label.setWordWrap(True)
+            layout.addWidget(full_label)
+
         reading = _primary_form(self._entry.reading or "")
         if reading:
             reading_label = QtWidgets.QLabel(f"[{reading}]")

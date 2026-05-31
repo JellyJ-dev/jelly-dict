@@ -46,7 +46,7 @@ class AnkiSyncService:
         deck_prefix = self._deck_prefix_for(language)
         errors: list[str] = []
         total_deleted = 0
-        all_ids: set[int] = set()
+        ids_by_word: dict[int, set[str]] = {}
         for word in words:
             try:
                 ids = client.find_notes_by_field(
@@ -57,11 +57,19 @@ class AnkiSyncService:
             except AnkiConnectError as exc:
                 errors.append(f"{word}: {exc}")
                 continue
-            all_ids.update(ids)
-        if not all_ids:
+            for note_id in ids:
+                ids_by_word.setdefault(note_id, set()).add(word)
+        if not ids_by_word:
             return 0, errors
         try:
-            total_deleted = client.delete_notes(list(all_ids))
+            verified_ids = _notes_with_exact_word(client.notes_info(list(ids_by_word)), ids_by_word)
+        except AnkiConnectError as exc:
+            errors.append(str(exc))
+            return 0, errors
+        if not verified_ids:
+            return 0, errors
+        try:
+            total_deleted = client.delete_notes(verified_ids)
         except AnkiConnectError as exc:
             errors.append(str(exc))
         return total_deleted, errors
@@ -80,3 +88,34 @@ class AnkiSyncService:
                 return "::".join([*parts[:-1], suffix])
             return f"{base}::{suffix}"
         return base
+
+
+def _notes_with_exact_word(
+    notes: list[dict],
+    ids_by_word: dict[int, set[str]],
+) -> list[int]:
+    verified: list[int] = []
+    for note in notes:
+        note_id = _note_id(note)
+        if note_id is None or note_id not in ids_by_word:
+            continue
+        word = _field_value(note, "Word")
+        if word in ids_by_word[note_id]:
+            verified.append(note_id)
+    return verified
+
+
+def _note_id(note: dict) -> int | None:
+    raw = note.get("noteId", note.get("note_id", note.get("id")))
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _field_value(note: dict, field: str) -> str:
+    fields = note.get("fields") or {}
+    raw = fields.get(field, "")
+    if isinstance(raw, dict):
+        return str(raw.get("value", "") or "")
+    return str(raw or "")

@@ -111,3 +111,8 @@ def test_quote_escapes_double_quotes_in_search_value(monkeypatch):
     client = AnkiConnectClient()
     client.find_notes_by_field("D", "Word", 'a"b')
     assert '\\"' in captured[0]["params"]["query"]
+
+
+def test_remote_ankiconnect_url_is_rejected():
+    with pytest.raises(ValueError, match="localhost"):
+        AnkiConnectClient("https://example.com:8765")

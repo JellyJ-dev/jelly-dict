@@ -167,3 +167,12 @@ def test_collect_entries_skips_blank_language_rows(tmp_path) -> None:
     entries = service._collect_entries("en")
 
     assert [entry.word for entry in entries] == ["apple"]
+
+
+def test_excel_path_expands_user_home(monkeypatch, tmp_path) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    settings = Settings(excel_path_en="~/vocab.xlsx")
+    service = ExportService(settings, CacheStore(tmp_path / "cache.db"))
+
+    assert service._excel_path("en") == home / "vocab.xlsx"

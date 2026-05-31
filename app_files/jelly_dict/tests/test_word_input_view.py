@@ -158,6 +158,15 @@ def test_bulk_input_submission_uses_bulk_signal(qtbot):
     assert seen == [(["apple", "banana"], "")]
 
 
+def test_bulk_input_updates_lookup_button_label(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+
+    view.input.setText("apple, banana")
+
+    assert view.lookup_btn.text() == "일괄 조회"
+
+
 def test_trailing_bulk_separator_submits_clean_single_word(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
@@ -168,3 +177,24 @@ def test_trailing_bulk_separator_submits_clean_single_word(qtbot):
     view._submit()
 
     assert seen == [("apple", "")]
+
+
+def test_long_ocr_and_queue_chips_are_elided(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    long_token = "extraordinarily-long-token-that-should-not-stretch-the-panel"
+
+    view.set_ocr_tokens([long_token])
+    view.set_lookup_queue([
+        (long_token, "pending", "job-1"),
+        (long_token, "failed", "job-2"),
+    ])
+
+    ocr_chip = view._ocr_chip_buttons[long_token]
+    queue_texts = [
+        button.text()
+        for button in view.queue_chips_frame.findChildren(QtWidgets.QPushButton)
+    ]
+    assert "…" in ocr_chip.text()
+    assert all("…" in text for text in queue_texts)
+    assert long_token in ocr_chip.toolTip()

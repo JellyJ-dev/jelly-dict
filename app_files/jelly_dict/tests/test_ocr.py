@@ -48,6 +48,13 @@ def test_google_vision_provider_constructs_with_key(monkeypatch) -> None:
     assert "***" in repr(provider)
 
 
+def test_google_vision_rejects_nonofficial_endpoint() -> None:
+    from app.ocr.google_vision import GoogleVisionOcrProvider
+
+    with pytest.raises(ValueError, match="공식"):
+        GoogleVisionOcrProvider("key", "https://example.com/v1/images:annotate")
+
+
 def test_ocr_result_keeps_worker_payload_shape() -> None:
     result = OcrResult([OcrToken("dragon", 0.95)])
 

@@ -47,3 +47,27 @@ def test_unknown_keys_are_ignored(isolated_runtime):
     settings = store.load()
     assert settings.show_preview is False
     assert not hasattr(settings, "bogus_key")
+
+
+def test_invalid_setting_types_fall_back_to_defaults(isolated_runtime):
+    store = SettingsStore()
+    store.path.write_text(
+        json.dumps(
+            {
+                "cache_enabled": "false",
+                "request_delay_seconds": "fast",
+                "excel_columns": "word,meaning",
+                "duplicate_policy": "delete_everything",
+                "tts_voicevox_voices": ["ok", 123],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = store.load()
+
+    assert settings.cache_enabled is False
+    assert settings.request_delay_seconds == 1.0
+    assert settings.excel_columns == EXCEL_COLUMN_KEYS_DEFAULT
+    assert settings.duplicate_policy == "ask"
+    assert settings.tts_voicevox_voices == SettingsStore().load().tts_voicevox_voices

@@ -26,6 +26,8 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
+from app.core.url_safety import require_loopback_http_url
+
 log = logging.getLogger(__name__)
 
 DEFAULT_URL = "http://127.0.0.1:8765"
@@ -38,7 +40,7 @@ class AnkiConnectError(Exception):
 
 class AnkiConnectClient:
     def __init__(self, url: str = DEFAULT_URL, timeout: float = 5.0) -> None:
-        self._url = url
+        self._url = require_loopback_http_url(url, "AnkiConnect")
         self._timeout = timeout
 
     def _invoke(self, action: str, **params: Any) -> Any:
