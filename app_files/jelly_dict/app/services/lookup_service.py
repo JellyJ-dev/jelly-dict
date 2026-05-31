@@ -37,6 +37,8 @@ class LookupService:
         self,
         word: str,
         forced_language: Language | None = None,
+        *,
+        force_refresh: bool = False,
     ) -> LookupOutcome:
         word = (word or "").strip()
         if not word:
@@ -59,7 +61,7 @@ class LookupService:
 
         language: Language = forced_language or detected  # type: ignore[assignment]
 
-        if self._settings.cache_enabled:
+        if self._settings.cache_enabled and not force_refresh:
             cached = self._cache.get(word, language)
             if cached is not None:
                 self._cache.remember_lookup(word, language, entry_word=cached.word)

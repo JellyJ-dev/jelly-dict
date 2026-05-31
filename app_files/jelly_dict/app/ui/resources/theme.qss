@@ -209,15 +209,15 @@ QPushButton#wordbookSortButton::menu-indicator {
 QPushButton#wordbookExpandButton {
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 10px;
+    border-radius: 11px;
     color: #e8744f;
-    padding: 0;
-    min-width: 20px;
-    max-width: 20px;
-    min-height: 20px;
-    max-height: 20px;
-    font-size: 17px;
+    padding: 0 12px;
+    min-width: 54px;
+    min-height: 34px;
+    max-height: 34px;
+    font-size: 13px;
     font-weight: 800;
+    text-align: center;
 }
 QPushButton#wordbookExpandButton:hover {
     color: #f29a78;
@@ -437,7 +437,8 @@ QPushButton#ocrCloseButton:hover {
     background: #282826;
     border-color: #3f3f3c;
 }
-QPushButton#ghostButton {
+QPushButton#ghostButton,
+QPushButton#wordbookActionButton {
     background: transparent;
     color: #d4cec4;
     border: 1px solid transparent;
@@ -447,6 +448,7 @@ QPushButton#ghostButton {
     max-height: 34px;
     font-size: 13px;
     font-weight: 700;
+    text-align: center;
 }
 QPushButton#wordbookDeleteButton {
     background: transparent;
@@ -458,13 +460,14 @@ QPushButton#wordbookDeleteButton {
     max-height: 34px;
     font-size: 13px;
     font-weight: 700;
+    text-align: center;
 }
-QFrame#wordbookExportShell {
+QWidget#wordbookExportShell {
     background: transparent;
     border: 1px solid #454542;
-    border-radius: 10px;
+    border-radius: 11px;
 }
-QFrame#wordbookExportShell[active="true"] {
+QWidget#wordbookExportShell[active="true"] {
     background: #282826;
     border-color: #e8744f;
 }
@@ -479,20 +482,27 @@ QPushButton#wordbookExportButton {
     font-size: 12px;
     font-weight: 700;
 }
+QPushButton#wordbookExportButton:disabled,
+QPushButton#wordbookExportOptionButton:disabled {
+    color: #6f6b64;
+    background: transparent;
+}
 QPushButton#ghostButton:hover,
+QPushButton#wordbookActionButton:hover,
 QPushButton#wordbookDeleteButton:hover {
     background: #282826;
     color: #e7e1d6;
     border-color: #6a6963;
 }
 QPushButton#ghostButton:disabled,
+QPushButton#wordbookActionButton:disabled,
 QPushButton#wordbookDeleteButton:disabled,
 QPushButton#footerSettingsButton:disabled {
     background: transparent;
     color: #6f6b64;
     border-color: transparent;
 }
-QFrame#wordbookExportShell[active="true"] QPushButton#wordbookExportButton,
+QWidget#wordbookExportShell[active="true"] QPushButton#wordbookExportButton,
 QPushButton#wordbookExportButton:hover {
     color: #e8744f;
     background: transparent;
@@ -510,7 +520,7 @@ QPushButton#wordbookExportOptionButton {
     font-size: 18px;
     font-weight: 800;
 }
-QFrame#wordbookExportShell[active="true"] QPushButton#wordbookExportOptionButton {
+QWidget#wordbookExportShell[active="true"] QPushButton#wordbookExportOptionButton {
     color: #e7e1d6;
 }
 QPushButton#wordbookExportOptionButton:hover {
@@ -524,7 +534,10 @@ QFrame#wordbookExportDivider {
     min-height: 18px;
     max-height: 18px;
 }
-QFrame#wordbookExportShell[active="true"] QFrame#wordbookExportDivider {
+QWidget#wordbookExportShell:disabled QFrame#wordbookExportDivider {
+    background: #333331;
+}
+QWidget#wordbookExportShell[active="true"] QFrame#wordbookExportDivider {
     background: #e8744f;
 }
 QFrame#ankiExportPopup {
@@ -599,6 +612,15 @@ QFrame#recentPanel {
     border-radius: 14px;
     min-width: 860px;
     max-width: 980px;
+}
+QFrame#recentPanel[expanded="true"] {
+    min-width: 720px;
+    max-width: 16777215px;
+}
+QLabel#wordbookStats {
+    color: #8f8980;
+    font-size: 12px;
+    font-weight: 700;
 }
 QLineEdit#wordbookSearch {
     background: #20201f;
@@ -727,17 +749,17 @@ QFrame#wordbookRow {
 }
 QLabel#wordbookWord {
     color: #e7e1d6;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 800;
 }
 QLabel#wordbookReading {
     color: #aaa59c;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
 }
 QLabel#wordbookMeaning {
     color: #c8c1b7;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
 }
 QPlainTextEdit#logView {

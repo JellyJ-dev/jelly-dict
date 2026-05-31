@@ -24,6 +24,12 @@ def _resource_icon(name: str) -> QtGui.QIcon:
     return QtGui.QIcon(str(RESOURCE_DIR / "icons" / name))
 
 
+def _repolish(widget: QtWidgets.QWidget) -> None:
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+    widget.update()
+
+
 class ElideLabel(QtWidgets.QLabel):
     def __init__(
         self,
@@ -209,6 +215,7 @@ class WordInputView(QtWidgets.QWidget):
     bulkRetryFailedRequested = QtCore.Signal()
     bulkClearFailedRequested = QtCore.Signal()
     wordbookSortChanged = QtCore.Signal(str)
+    wordbookRequeryRequested = QtCore.Signal(object, str)  # list[str], language
     ocrBatchSubmitted = QtCore.Signal(object, str)  # list[str], forced_language
     ocrBulkLookupRequested = QtCore.Signal(list, str)  # list[str], forced_language
     clearRecentRequested = QtCore.Signal()
@@ -261,6 +268,7 @@ class WordInputView(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(64, 28, 64, 16)
         layout.setSpacing(10)
+        self._root_layout = layout
 
         self.top_area = QtWidgets.QFrame()
         self.top_area.setObjectName("topArea")
@@ -469,7 +477,7 @@ class WordInputView(QtWidgets.QWidget):
         recent_header.setSpacing(10)
         recent_layout.addLayout(recent_header)
 
-        self.wordbook_expand_btn = QtWidgets.QPushButton("↙")
+        self.wordbook_expand_btn = QtWidgets.QPushButton("확대")
         self.wordbook_expand_btn.setObjectName("wordbookExpandButton")
         self.wordbook_expand_btn.setToolTip("단어장 크게 보기")
         self.wordbook_expand_btn.setVisible(False)
@@ -486,11 +494,33 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_sort_btn.setMenu(self._build_wordbook_sort_menu())
         recent_header.addWidget(self.wordbook_sort_btn)
 
+        self.wordbook_stats = QtWidgets.QLabel("")
+        self.wordbook_stats.setObjectName("wordbookStats")
+        self.wordbook_stats.setVisible(False)
+        recent_header.addWidget(self.wordbook_stats)
+
         recent_header.addStretch(1)
         self.clear_recent_btn = QtWidgets.QPushButton("목록 지우기")
         self.clear_recent_btn.setObjectName("ghostButton")
         self.clear_recent_btn.setToolTip("Excel/캐시는 유지, 표시만 지움")
         recent_header.addWidget(self.clear_recent_btn)
+        self.wordbook_select_visible_btn = QtWidgets.QPushButton("보이는 항목 선택")
+        self.wordbook_select_visible_btn.setObjectName("wordbookActionButton")
+        self.wordbook_select_visible_btn.setToolTip("현재 검색 결과의 단어를 모두 선택")
+        self.wordbook_select_visible_btn.setVisible(False)
+        recent_header.addWidget(self.wordbook_select_visible_btn)
+        self.wordbook_requery_btn = QtWidgets.QPushButton("선택 재조회")
+        self.wordbook_requery_btn.setObjectName("wordbookActionButton")
+        self.wordbook_requery_btn.setToolTip("선택한 단어를 다시 조회해 뜻과 예문을 보강")
+        self.wordbook_requery_btn.setVisible(False)
+        self.wordbook_requery_btn.setEnabled(False)
+        recent_header.addWidget(self.wordbook_requery_btn)
+        self.wordbook_copy_btn = QtWidgets.QPushButton("선택 복사")
+        self.wordbook_copy_btn.setObjectName("wordbookActionButton")
+        self.wordbook_copy_btn.setToolTip("선택한 단어를 클립보드에 복사")
+        self.wordbook_copy_btn.setVisible(False)
+        self.wordbook_copy_btn.setEnabled(False)
+        recent_header.addWidget(self.wordbook_copy_btn)
         self.wordbook_export_btn = AnkiExportButton()
         self.wordbook_export_btn.setVisible(False)
         recent_header.addWidget(self.wordbook_export_btn)
@@ -556,6 +586,9 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_export_btn.settingsRequested.connect(self.openSettingsRequested.emit)
         self.input.textEdited.connect(lambda _text: self.prewarmRequested.emit())
         self.wordbook_delete_btn.clicked.connect(self._request_wordbook_delete)
+        self.wordbook_select_visible_btn.clicked.connect(self._select_visible_wordbook_items)
+        self.wordbook_requery_btn.clicked.connect(self._requery_selected_wordbook_items)
+        self.wordbook_copy_btn.clicked.connect(self._copy_selected_wordbook_items)
         self.wordbook_expand_btn.clicked.connect(self._toggle_wordbook_expanded)
         # Restart the debounce timer on every keystroke; final render
         # happens once the user pauses typing.
@@ -946,11 +979,18 @@ class WordInputView(QtWidgets.QWidget):
         self._wordbook_expanded = False
         self.top_area.setVisible(True)
         self.top_area.setMaximumHeight(16777215)
+        self._apply_wordbook_chrome_state()
         self.recent_title_btn.setText("최근 단어")
         self.wordbook_expand_btn.setVisible(False)
         self.wordbook_sort_btn.setVisible(False)
+        self.wordbook_stats.setVisible(False)
         self.clear_recent_btn.setVisible(True)
         self.clear_recent_btn.setEnabled(bool(display_items))
+        self.wordbook_select_visible_btn.setVisible(False)
+        self.wordbook_requery_btn.setVisible(False)
+        self.wordbook_requery_btn.setEnabled(False)
+        self.wordbook_copy_btn.setVisible(False)
+        self.wordbook_copy_btn.setEnabled(False)
         self.wordbook_export_btn.setVisible(False)
         self.wordbook_export_btn.setEnabled(True)
         self.wordbook_delete_btn.setVisible(False)
@@ -1116,10 +1156,14 @@ class WordInputView(QtWidgets.QWidget):
         self.recent_title_btn.setText(title)
         self.top_area.setVisible(not self._wordbook_expanded)
         self.top_area.setMaximumHeight(0 if self._wordbook_expanded else 16777215)
+        self._apply_wordbook_chrome_state()
         self.wordbook_expand_btn.setVisible(True)
-        self.wordbook_expand_btn.setText("↗" if self._wordbook_expanded else "↙")
         self.wordbook_sort_btn.setVisible(True)
+        self.wordbook_stats.setVisible(True)
         self.clear_recent_btn.setVisible(False)
+        self.wordbook_select_visible_btn.setVisible(True)
+        self.wordbook_requery_btn.setVisible(False)
+        self.wordbook_copy_btn.setVisible(False)
         self.wordbook_export_btn.setVisible(True)
         self.wordbook_export_btn.setEnabled(bool(items))
         self.wordbook_export_btn.set_language(language)
@@ -1145,13 +1189,7 @@ class WordInputView(QtWidgets.QWidget):
             return
         needle = self.wordbook_search.text().strip().lower()
         if needle:
-            items = [
-                item
-                for item in self._wordbook_items
-                if needle in item[0].lower()
-                or needle in item[2].lower()
-                or needle in item[3].lower()
-            ]
+            items = self._filtered_wordbook_items(needle)
         else:
             items = list(self._wordbook_items)
 
@@ -1179,7 +1217,7 @@ class WordInputView(QtWidgets.QWidget):
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
                 qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
-                qt_item.setSizeHint(QtCore.QSize(620, 62))
+                qt_item.setSizeHint(QtCore.QSize(620, 54))
                 self.recent_list.setItemWidget(
                     qt_item, WordbookRow(item_language, word, reading, hint)
                 )
@@ -1190,7 +1228,7 @@ class WordInputView(QtWidgets.QWidget):
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
                 qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
-                qt_item.setSizeHint(QtCore.QSize(620, 62))
+                qt_item.setSizeHint(QtCore.QSize(620, 54))
                 self.recent_list.addItem(qt_item)
                 self.recent_list.setItemWidget(
                     qt_item, WordbookRow(item_language, word, reading, hint)
@@ -1201,6 +1239,17 @@ class WordInputView(QtWidgets.QWidget):
         finally:
             self.recent_list.setUpdatesEnabled(True)
         self._on_list_selection_changed()
+
+    def _filtered_wordbook_items(self, needle: str) -> list[WordbookItem]:
+        if not needle:
+            return list(self._wordbook_items)
+        return [
+            item
+            for item in self._wordbook_items
+            if needle in item[0].lower()
+            or needle in item[2].lower()
+            or needle in item[3].lower()
+        ]
 
     def _add_empty_list_item(self, text: str, height: int) -> None:
         item = QtWidgets.QListWidgetItem(text)
@@ -1213,11 +1262,33 @@ class WordInputView(QtWidgets.QWidget):
         if self._list_mode not in ("en", "ja"):
             return
         self._wordbook_expanded = not self._wordbook_expanded
-        self.wordbook_expand_btn.setText("↗" if self._wordbook_expanded else "↙")
-        self.wordbook_expand_btn.setToolTip(
-            "단어장 줄이기" if self._wordbook_expanded else "단어장 크게 보기"
-        )
+        self._apply_wordbook_chrome_state()
         self._animate_wordbook_layout()
+
+    def _apply_wordbook_chrome_state(self) -> None:
+        expanded = self._wordbook_expanded and self._list_mode in ("en", "ja")
+        self.wordbook_expand_btn.setText("축소" if expanded else "확대")
+        self.wordbook_expand_btn.setToolTip(
+            "입력 영역 보이기" if expanded else "단어장 크게 보기"
+        )
+        self.recent_panel.setProperty("expanded", expanded)
+        self.recent_panel.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding if expanded else QtWidgets.QSizePolicy.Fixed,
+            QtWidgets.QSizePolicy.Expanding,
+        )
+        self.recent_panel.setMinimumWidth(720 if expanded else 860)
+        self.recent_panel.setMaximumWidth(16777215 if expanded else 980)
+        self._root_layout.setAlignment(
+            self.recent_panel,
+            QtCore.Qt.Alignment() if expanded else QtCore.Qt.AlignHCenter,
+        )
+        self._root_layout.setContentsMargins(
+            36 if expanded else 64,
+            22 if expanded else 28,
+            36 if expanded else 64,
+            16,
+        )
+        _repolish(self.recent_panel)
 
     def _animate_wordbook_layout(self) -> None:
         if self._top_height_animation is not None:
@@ -1261,18 +1332,79 @@ class WordInputView(QtWidgets.QWidget):
     def _on_list_selection_changed(self) -> None:
         if self._list_mode not in ("en", "ja"):
             return
-        count = len(self.recent_list.selectedItems())
-        self.wordbook_delete_btn.setEnabled(count > 0)
-        self.wordbook_delete_btn.setText(f"선택 삭제 ({count})" if count else "선택 삭제")
+        self._update_wordbook_toolbar_state()
+
+    def _update_wordbook_toolbar_state(self) -> None:
+        if self._list_mode not in ("en", "ja"):
+            return
+        selected = self._selected_wordbook_words()
+        visible_count = self._visible_wordbook_count()
+        total_count = len(self._wordbook_items)
+        selected_count = len(selected)
+        stats = f"{visible_count}/{total_count}개" if total_count else "0개"
+        if selected_count:
+            stats += f" · 선택 {selected_count}개"
+        self.wordbook_stats.setText(stats)
+        self.wordbook_select_visible_btn.setVisible(visible_count > 0 and selected_count == 0)
+        self.wordbook_select_visible_btn.setEnabled(visible_count > 0)
+        self.wordbook_requery_btn.setVisible(selected_count > 0)
+        self.wordbook_copy_btn.setVisible(selected_count > 0)
+        self.wordbook_delete_btn.setVisible(selected_count > 0)
+        self.wordbook_requery_btn.setEnabled(selected_count > 0)
+        self.wordbook_copy_btn.setEnabled(selected_count > 0)
+        self.wordbook_delete_btn.setEnabled(selected_count > 0)
+        self.wordbook_delete_btn.setText(
+            f"선택 삭제 ({selected_count})" if selected_count else "선택 삭제"
+        )
+
+    def _visible_wordbook_count(self) -> int:
+        count = 0
+        for index in range(self.recent_list.count()):
+            item = self.recent_list.item(index)
+            if item.flags() & QtCore.Qt.ItemIsSelectable:
+                count += 1
+        return count
+
+    def _selected_wordbook_words(self) -> list[str]:
+        words: list[str] = []
+        for item in self.recent_list.selectedItems():
+            payload = item.data(QtCore.Qt.UserRole)
+            if not (isinstance(payload, tuple) and len(payload) == 2):
+                continue
+            word, language = payload
+            if language == self._list_mode and isinstance(word, str) and word.strip():
+                words.append(word.strip())
+        return words
+
+    def _select_visible_wordbook_items(self) -> None:
+        if self._list_mode not in ("en", "ja"):
+            return
+        self.recent_list.clearSelection()
+        for index in range(self.recent_list.count()):
+            item = self.recent_list.item(index)
+            if item.flags() & QtCore.Qt.ItemIsSelectable:
+                item.setSelected(True)
+        self._update_wordbook_toolbar_state()
+
+    def _requery_selected_wordbook_items(self) -> None:
+        if self._list_mode not in ("en", "ja"):
+            return
+        words = self._selected_wordbook_words()
+        if not words:
+            return
+        self.wordbookRequeryRequested.emit(words, self._list_mode)
+
+    def _copy_selected_wordbook_items(self) -> None:
+        words = self._selected_wordbook_words()
+        if not words:
+            return
+        QtWidgets.QApplication.clipboard().setText("\n".join(words))
+        self.status_summary.setText(f"선택한 단어 {len(words)}개 복사됨")
 
     def _request_wordbook_delete(self) -> None:
         if self._list_mode not in ("en", "ja"):
             return
-        words: list[str] = []
-        for item in self.recent_list.selectedItems():
-            payload = item.data(QtCore.Qt.UserRole)
-            if isinstance(payload, tuple) and len(payload) == 2:
-                words.append(str(payload[0]))
+        words = self._selected_wordbook_words()
         if words:
             self.wordbookDeleteRequested.emit(self._list_mode, words)
 

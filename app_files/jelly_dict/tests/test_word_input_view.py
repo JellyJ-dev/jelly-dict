@@ -102,6 +102,57 @@ def test_wordbook_filter_empty_state_preserves_export(qtbot):
     assert not view.wordbook_delete_btn.isEnabled()
 
 
+def test_wordbook_toolbar_select_copy_and_requery_actions(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    seen = []
+    view.wordbookRequeryRequested.connect(lambda words, lang: seen.append((words, lang)))
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+
+    assert not view.wordbook_select_visible_btn.isHidden()
+    assert view.wordbook_requery_btn.isHidden()
+    assert view.wordbook_copy_btn.isHidden()
+    assert view.wordbook_delete_btn.isHidden()
+
+    view.wordbook_select_visible_btn.click()
+
+    assert view.wordbook_stats.text() == "2/2개 · 선택 2개"
+    assert view.wordbook_select_visible_btn.isHidden()
+    assert not view.wordbook_requery_btn.isHidden()
+    assert not view.wordbook_copy_btn.isHidden()
+    assert not view.wordbook_delete_btn.isHidden()
+    assert view.wordbook_requery_btn.isEnabled()
+    assert view.wordbook_copy_btn.isEnabled()
+
+    view.wordbook_requery_btn.click()
+    assert seen == [(["apple", "banana"], "en")]
+
+    view.wordbook_copy_btn.click()
+    assert view.status_summary.text() == "선택한 단어 2개 복사됨"
+
+
+def test_wordbook_expand_switches_to_real_wide_panel_mode(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook("ja", [("粗製乱造", "ja", "そせいらんぞう", "조제 남조")])
+
+    assert view.wordbook_expand_btn.text() == "확대"
+    assert view.recent_panel.maximumWidth() == 980
+
+    view._toggle_wordbook_expanded()
+
+    assert view.wordbook_expand_btn.text() == "축소"
+    assert view.recent_panel.property("expanded") is True
+    assert view.recent_panel.maximumWidth() > 980
+    assert view._root_layout.contentsMargins().left() == 36
+
+
 def test_switching_from_recent_to_wordbook_resets_search_context(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)

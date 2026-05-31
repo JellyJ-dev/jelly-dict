@@ -45,10 +45,17 @@ log = logging.getLogger(__name__)
 
 
 class LookupJob:
-    def __init__(self, word: str, forced_language: str) -> None:
+    def __init__(
+        self,
+        word: str,
+        forced_language: str,
+        *,
+        force_refresh: bool = False,
+    ) -> None:
         self.id = uuid4().hex
         self.word = word
         self.forced_language = forced_language
+        self.force_refresh = force_refresh
         self.status = "pending"  # "pending" | "running" | "failed"
 
 
@@ -165,6 +172,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_view.bulkRetryFailedRequested.connect(self._on_bulk_retry_failed_requested)
         self.input_view.bulkClearFailedRequested.connect(self._on_bulk_clear_failed_requested)
         self.input_view.wordbookSortChanged.connect(self._on_wordbook_sort_changed)
+        self.input_view.wordbookRequeryRequested.connect(self._on_wordbook_requery_requested)
         self.input_view.ocrBatchSubmitted.connect(self._on_ocr_batch_submit)
         self.input_view.ocrBulkLookupRequested.connect(self._on_ocr_bulk_submit)
         self.input_view.clearRecentRequested.connect(self._clear_recent)
@@ -448,16 +456,30 @@ class MainWindow(QtWidgets.QMainWindow):
             self._refresh_lookup_queue_ui()
             self.status.showMessage(f"'{target_job.word}' 대기가 취소되었습니다.")
 
-    def _is_already_queued_or_active(self, word: str, forced_language: str) -> bool:
+    def _is_already_queued_or_active(
+        self,
+        word: str,
+        forced_language: str,
+        *,
+        force_refresh: bool = False,
+    ) -> bool:
         normalized = word.strip().lower()
         lang_norm = (forced_language or "").strip().lower()
         if self._active_job is not None:
             active_lang = (self._active_job.forced_language or "").strip().lower()
-            if self._active_job.word.strip().lower() == normalized and active_lang == lang_norm:
+            if (
+                self._active_job.word.strip().lower() == normalized
+                and active_lang == lang_norm
+                and self._active_job.force_refresh == force_refresh
+            ):
                 return True
         for job in self._lookup_queue:
             job_lang = (job.forced_language or "").strip().lower()
-            if job.word.strip().lower() == normalized and job_lang == lang_norm:
+            if (
+                job.word.strip().lower() == normalized
+                and job_lang == lang_norm
+                and job.force_refresh == force_refresh
+            ):
                 return True
         return False
 
@@ -523,14 +545,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self,
         tokens: list[str],
         forced_language: str,
+        *,
+        force_refresh: bool = False,
     ) -> tuple[int, int]:
         added_count = 0
         skipped_count = 0
         for token in tokens:
-            if self._is_already_queued_or_active(token, forced_language):
+            if self._is_already_queued_or_active(
+                token,
+                forced_language,
+                force_refresh=force_refresh,
+            ):
                 skipped_count += 1
                 continue
-            job = LookupJob(token, forced_language)
+            job = LookupJob(token, forced_language, force_refresh=force_refresh)
             self._lookup_queue.append(job)
             self._lookup_queue_total += 1
             added_count += 1
@@ -540,12 +568,48 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_ocr_bulk_submit(self, tokens: list[str], forced_language: str) -> None:
         self._on_ocr_batch_submit(tokens, forced_language)
 
-    def _start_lookup(self, word: str, forced_language: str) -> None:
+    @QtCore.Slot(object, str)
+    def _on_wordbook_requery_requested(self, words_obj: object, forced_language: str) -> None:
+        words = [
+            word.strip()
+            for word in words_obj
+            if isinstance(word, str) and word.strip()
+        ] if isinstance(words_obj, list) else []
+        if not words:
+            return
+        added_count, skipped_count = self._queue_lookup_tokens(
+            words,
+            forced_language,
+            force_refresh=True,
+        )
+        self._refresh_lookup_queue_ui()
+        if added_count > 0:
+            self.status.showMessage(
+                f"{added_count}개 단어를 캐시 없이 다시 조회합니다."
+                + (f" ({skipped_count}개 중복 제외)" if skipped_count else "")
+            )
+            if not self._is_lookup_active():
+                self._start_next_queued_lookup()
+            return
+        self.status.showMessage("다시 조회할 새 단어가 없습니다.")
+
+    def _start_lookup(
+        self,
+        word: str,
+        forced_language: str,
+        *,
+        force_refresh: bool = False,
+    ) -> None:
         self.input_view.set_detection_label("")
         self.input_view.set_lookup_busy(True)
-        self.status.showMessage(f"조회 중: {word}…")
+        self.status.showMessage(f"{'재조회' if force_refresh else '조회'} 중: {word}…")
         thread = QtCore.QThread(self)
-        worker = LookupWorker(self._lookup_service, word, forced_language or None)
+        worker = LookupWorker(
+            self._lookup_service,
+            word,
+            forced_language or None,
+            force_refresh=force_refresh,
+        )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.finished.connect(self._on_lookup_finished)
@@ -608,7 +672,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.showMessage(f"순차 조회 {index}/{self._lookup_queue_total}: {job.word}")
         self._refresh_recent()
         self._refresh_lookup_queue_ui()
-        self._start_lookup(job.word, job.forced_language)
+        self._start_lookup(
+            job.word,
+            job.forced_language,
+            force_refresh=job.force_refresh,
+        )
 
     def _schedule_next_queued_lookup(self) -> None:
         self._active_job = None
@@ -851,7 +919,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._schedule_next_queued_lookup()
             return
         forced: Language = "ja" if clicked is ja_btn else "en"
-        self._start_lookup(word, forced)
+        refresh = self._active_job.force_refresh if self._active_job is not None else False
+        self._start_lookup(word, forced, force_refresh=refresh)
 
     # ---------- toggles / settings --------------------------------
 

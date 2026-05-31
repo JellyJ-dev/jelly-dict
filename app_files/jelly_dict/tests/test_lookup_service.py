@@ -76,6 +76,20 @@ def test_cache_hit_skips_provider(isolated_runtime):
     assert provider.calls == [], "provider must not be called on cache hit"
 
 
+def test_force_refresh_bypasses_cache_and_updates_it(isolated_runtime):
+    cache = CacheStore()
+    cache.upsert(VocabularyEntry(language="en", word="apple", memo="cached"))
+    fresh_entry = VocabularyEntry(language="en", word="apple", memo="fresh")
+    provider = _FakeProvider(LookupResult(entry=fresh_entry, status="ok"))
+    service = LookupService(provider, cache, _settings(cache_enabled=True))
+
+    outcome = service.lookup("apple", force_refresh=True)
+
+    assert outcome.from_cache is False
+    assert provider.calls == [("apple", "en")]
+    assert cache.get("apple", "en").memo == "fresh"
+
+
 def test_cache_miss_calls_provider_and_caches(isolated_runtime):
     cache = CacheStore()
     fresh_entry = VocabularyEntry(language="en", word="banana", memo="fresh")

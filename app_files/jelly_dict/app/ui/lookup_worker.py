@@ -18,16 +18,28 @@ class LookupWorker(QtCore.QObject):
     unsupported = QtCore.Signal(str)
     ambiguous = QtCore.Signal(str)
 
-    def __init__(self, service: LookupService, word: str, forced_language: str | None) -> None:
+    def __init__(
+        self,
+        service: LookupService,
+        word: str,
+        forced_language: str | None,
+        *,
+        force_refresh: bool = False,
+    ) -> None:
         super().__init__()
         self._service = service
         self._word = word
         self._forced = forced_language or None
+        self._force_refresh = force_refresh
 
     @QtCore.Slot()
     def run(self) -> None:
         try:
-            outcome: LookupOutcome = self._service.lookup(self._word, self._forced)
+            outcome: LookupOutcome = self._service.lookup(
+                self._word,
+                self._forced,
+                force_refresh=self._force_refresh,
+            )
         except UnsupportedLanguageError:
             self.unsupported.emit(self._word)
             return

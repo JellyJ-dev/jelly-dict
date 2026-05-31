@@ -45,32 +45,33 @@ class WordbookRow(QtWidgets.QFrame):
         super().__init__(parent)
         self.setObjectName("wordbookRow")
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(12, 7, 12, 7)
-        layout.setSpacing(3)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(2)
 
         top = QtWidgets.QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
-        top.setSpacing(8)
+        top.setSpacing(7)
         layout.addLayout(top)
 
         word_label = _ElideLabel(word)
         word_label.setObjectName("wordbookWord")
         word_label.setMinimumWidth(0)
+        word_label.setMaximumWidth(360 if language == "ja" and reading else 520)
         word_label.setSizePolicy(
-            QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
         )
-        top.addWidget(word_label, 1)
+        top.addWidget(word_label, 0)
 
         if language == "ja" and reading:
             reading_label = _ElideLabel(reading)
             reading_label.setObjectName("wordbookReading")
             reading_label.setMinimumWidth(0)
-            reading_label.setMaximumWidth(220)
+            reading_label.setMaximumWidth(240)
             reading_label.setSizePolicy(
                 QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
             )
             top.addWidget(reading_label, 0)
-        top.addStretch(0)
+        top.addStretch(1)
 
         meaning_label = _ElideLabel(hint)
         meaning_label.setObjectName("wordbookMeaning")
