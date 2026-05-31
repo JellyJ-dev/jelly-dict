@@ -103,8 +103,11 @@ class _AnkiMainButton(QtWidgets.QAbstractButton):
         del event
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        active = self.isDown() or self.underMouse()
+        enabled = self.isEnabled()
+        active = enabled and (self.isDown() or self.underMouse())
         color = QtGui.QColor("#e8744f") if active else QtGui.QColor("#d4cec4")
+        if not enabled:
+            color = QtGui.QColor("#6f6b64")
         if active:
             painter.setBrush(QtGui.QColor("#282826"))
             painter.setPen(QtCore.Qt.NoPen)
@@ -147,8 +150,11 @@ class _AnkiOptionButton(QtWidgets.QAbstractButton):
         del event
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        active = self.isDown() or self.underMouse()
+        enabled = self.isEnabled()
+        active = enabled and (self.isDown() or self.underMouse())
         color = QtGui.QColor("#e8744f") if active else QtGui.QColor("#d4cec4")
+        if not enabled:
+            color = QtGui.QColor("#6f6b64")
         if active:
             painter.setBrush(QtGui.QColor("#282826"))
             painter.setPen(QtCore.Qt.NoPen)

@@ -186,7 +186,7 @@ QPushButton#wordbookSortButton {
     padding: 0 14px;
     min-height: 34px;
     max-height: 34px;
-    text-align: left;
+    text-align: center;
 }
 QPushButton#wordbookSortButton {
     min-width: 70px;
@@ -335,6 +335,11 @@ QPushButton:hover {
     border-color: #6a6963;
     background: #353532;
 }
+QPushButton:disabled {
+    background: #252523;
+    color: #6f6b64;
+    border-color: #333331;
+}
 QPushButton#primaryButton:hover {
     color: #f29a78;
     background: #282826;
@@ -476,6 +481,13 @@ QPushButton#wordbookDeleteButton:hover {
     color: #e7e1d6;
     border-color: #6a6963;
 }
+QPushButton#ghostButton:disabled,
+QPushButton#wordbookDeleteButton:disabled,
+QPushButton#footerSettingsButton:disabled {
+    background: transparent;
+    color: #6f6b64;
+    border-color: transparent;
+}
 QFrame#wordbookExportShell[active="true"] QPushButton#wordbookExportButton,
 QPushButton#wordbookExportButton:hover {
     color: #e8744f;
@@ -533,7 +545,7 @@ QPushButton#ankiExportPopupWarning {
     max-height: 28px;
     font-size: 12px;
     font-weight: 700;
-    text-align: left;
+    text-align: center;
 }
 QPushButton#ankiExportPopupWarning {
     color: #f0c08a;
@@ -699,6 +711,11 @@ QListWidget#recentList::item:selected {
     background: #3a322d;
     border-color: #e8744f;
     color: #e7e1d6;
+}
+QListWidget#recentList::item:disabled {
+    background: #20201f;
+    border-color: #30302e;
+    color: #77746d;
 }
 QFrame#wordbookRow {
     background: transparent;

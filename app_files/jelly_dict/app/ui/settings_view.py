@@ -518,8 +518,10 @@ class SettingsDialog(QtWidgets.QDialog):
         self.tts_license_label.setText("\n".join(notes))
 
     def _make_uninstall_btn(self, engine_name: str, tooltip: str, handler) -> QtWidgets.QPushButton:
-        btn = QtWidgets.QPushButton("🗑")
+        btn = QtWidgets.QPushButton("")
         btn.setObjectName("settingsSecondaryButton")
+        btn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_TrashIcon))
+        btn.setIconSize(QtCore.QSize(15, 15))
         btn.setMaximumWidth(40)
         btn.setToolTip(f"{engine_name} 삭제 — {tooltip}")
         btn.clicked.connect(handler)

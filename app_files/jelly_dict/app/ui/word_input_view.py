@@ -12,6 +12,9 @@ from app.ui.widgets.wordbook_row import WordbookRow, wordbook_tooltip
 WordbookItem = tuple[str, str, str, str]  # word, language, reading, meaning hint
 NORMAL_LIST_HEIGHT = 320
 RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resources"
+RECENT_EMPTY_TEXT = "최근 기록 없음"
+WORDBOOK_EMPTY_TEXT = "저장된 단어 없음"
+WORDBOOK_FILTER_EMPTY_TEXT = "검색 결과 없음"
 
 
 def _resource_icon(name: str) -> QtGui.QIcon:
@@ -889,6 +892,7 @@ class WordInputView(QtWidgets.QWidget):
         """Each item is (word, language, hint, status). Hint is the first Korean
         meaning shown after an em-dash so the user can verify saves at a
         glance."""
+        display_items = items[:8]
         self._list_mode = "recent"
         self._wordbook_items = []
         self._wordbook_expanded = False
@@ -898,7 +902,9 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_expand_btn.setVisible(False)
         self.wordbook_sort_btn.setVisible(False)
         self.clear_recent_btn.setVisible(True)
+        self.clear_recent_btn.setEnabled(bool(display_items))
         self.wordbook_export_btn.setVisible(False)
+        self.wordbook_export_btn.setEnabled(True)
         self.wordbook_delete_btn.setVisible(False)
         self.wordbook_delete_btn.setEnabled(False)
         self.wordbook_search.setVisible(False)
@@ -910,7 +916,10 @@ class WordInputView(QtWidgets.QWidget):
         self.recent_list.setMinimumHeight(NORMAL_LIST_HEIGHT)
         self.recent_list.setMaximumHeight(16777215)
         self.recent_list.clear()
-        for word, language, hint, status in items[:8]:
+        if not display_items:
+            self._add_empty_list_item(RECENT_EMPTY_TEXT, NORMAL_LIST_HEIGHT)
+            return
+        for word, language, hint, status in display_items:
             prefix = "✓ " if status == "saved" else ""
             label = f"{prefix}[{language}] {word}"
             if hint:
@@ -964,13 +973,13 @@ class WordInputView(QtWidgets.QWidget):
             if status == "running":
                 chip = QtWidgets.QPushButton()
                 chip.setObjectName("queueChipRunning")
-                chip.setText(f"⏳ {word}")
+                chip.setText(f"진행 · {word}")
                 chip.setCursor(QtCore.Qt.ArrowCursor)
                 chip.setToolTip(f"'{word}' (조회 중...)")
             elif status == "failed":
                 chip = QueueJobChip()
                 chip.setObjectName("queueChipFailed")
-                chip.setText(f"⚠️ {word}")
+                chip.setText(f"실패 · {word}")
                 chip.setCursor(QtCore.Qt.PointingHandCursor)
                 chip.setToolTip(f"'{word}' (조회 실패. 클릭: 재시도, 우클릭: 삭제)")
                 chip.clicked.connect(lambda checked=False, jid=job_id: self.jobRetryRequested.emit(jid))
@@ -1005,9 +1014,9 @@ class WordInputView(QtWidgets.QWidget):
                 menu.setObjectName("languageMenu")
                 for word, status, job_id in hidden_jobs:
                     if status == "failed":
-                        retry_act = menu.addAction(f"⚠️ {word} (조회 재시도)")
+                        retry_act = menu.addAction(f"실패 · {word} (조회 재시도)")
                         retry_act.triggered.connect(lambda checked=False, jid=job_id: self.jobRetryRequested.emit(jid))
-                        delete_act = menu.addAction(f"❌ {word} (대기 삭제)")
+                        delete_act = menu.addAction(f"{word} (대기 삭제)")
                         delete_act.triggered.connect(lambda checked=False, jid=job_id: self.jobCancelRequested.emit(jid))
                     else:
                         cancel_act = menu.addAction(f"{word} (대기 취소)")
@@ -1031,6 +1040,7 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_sort_btn.setVisible(True)
         self.clear_recent_btn.setVisible(False)
         self.wordbook_export_btn.setVisible(True)
+        self.wordbook_export_btn.setEnabled(bool(items))
         self.wordbook_export_btn.set_language(language)
         self.wordbook_delete_btn.setVisible(True)
         self.wordbook_search.setVisible(True)
@@ -1069,9 +1079,19 @@ class WordInputView(QtWidgets.QWidget):
             self.recent_list.clearSelection()
             current = self.recent_list.count()
             target = len(items)
+            if target == 0:
+                self.recent_list.clear()
+                self._add_empty_list_item(
+                    WORDBOOK_FILTER_EMPTY_TEXT if needle else WORDBOOK_EMPTY_TEXT,
+                    120 if needle else NORMAL_LIST_HEIGHT,
+                )
+                self._on_list_selection_changed()
+                return
             for i in range(min(current, target)):
                 word, item_language, reading, hint = items[i]
                 qt_item = self.recent_list.item(i)
+                qt_item.setText("")
+                qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
                 qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
                 qt_item.setSizeHint(QtCore.QSize(620, 62))
@@ -1082,6 +1102,7 @@ class WordInputView(QtWidgets.QWidget):
             for i in range(current, target):
                 word, item_language, reading, hint = items[i]
                 qt_item = QtWidgets.QListWidgetItem()
+                qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
                 qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
                 qt_item.setSizeHint(QtCore.QSize(620, 62))
@@ -1095,6 +1116,13 @@ class WordInputView(QtWidgets.QWidget):
         finally:
             self.recent_list.setUpdatesEnabled(True)
         self._on_list_selection_changed()
+
+    def _add_empty_list_item(self, text: str, height: int) -> None:
+        item = QtWidgets.QListWidgetItem(text)
+        item.setFlags(QtCore.Qt.NoItemFlags)
+        item.setTextAlignment(QtCore.Qt.AlignCenter)
+        item.setSizeHint(QtCore.QSize(620, height))
+        self.recent_list.addItem(item)
 
     def _toggle_wordbook_expanded(self) -> None:
         if self._list_mode not in ("en", "ja"):

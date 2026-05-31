@@ -253,7 +253,9 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---------- helpers --------------------------------------------
 
     def _schedule_idle_startup_tasks(self) -> None:
-        QtCore.QTimer.singleShot(300, self._start_saved_words_cache_load)
+        platform = QtWidgets.QApplication.platformName().lower()
+        if platform not in {"offscreen", "minimal"}:
+            QtCore.QTimer.singleShot(300, self._start_saved_words_cache_load)
         QtCore.QTimer.singleShot(1200, self._cleanup_ocr_temp_dir_idle)
 
     def _start_saved_words_cache_load(self) -> None:
@@ -282,6 +284,20 @@ class MainWindow(QtWidgets.QMainWindow):
     def _clear_saved_words_worker(self) -> None:
         self._saved_words_thread = None
         self._saved_words_worker = None
+
+    def _stop_saved_words_cache_load(self) -> bool:
+        thread = self._saved_words_thread
+        if thread is None:
+            return True
+        try:
+            if thread.isRunning():
+                thread.quit()
+                if not thread.wait(2000):
+                    return False
+        except RuntimeError:
+            pass
+        self._clear_saved_words_worker()
+        return True
 
     @QtCore.Slot(object)
     def _on_saved_words_cache_ready(self, saved_words: object) -> None:
@@ -1027,6 +1043,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._ocr_thread.wait(2000)
         except Exception as exc:
             log.warning("ocr thread cleanup failed: %s", exc)
+        try:
+            if not self._stop_saved_words_cache_load():
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "단어장 확인 중",
+                    "저장된 단어 상태 확인이 끝난 뒤 종료해주세요.",
+                )
+                event.ignore()
+                return
+        except Exception as exc:
+            log.warning("saved words cache cleanup failed: %s", exc)
         self._cleanup_current_ocr_temp()
         ocr_temp_files.cleanup_temp_dir()
         try:
