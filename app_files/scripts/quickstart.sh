@@ -295,38 +295,40 @@ python_command() {
 }
 
 candidate_python_commands() {
-  # Order matters: prefer versions with known-good PySide6 wheels first.
-  # PySide6 6.x supports up to Python 3.13; 3.14 wheels may lag behind.
+  # Order matters: prefer versions with known-good Qt/macOS app behavior first.
+  # Python 3.13 + PySide6 6.10 can abort while creating the Cocoa platform
+  # integration when launched from the generated .app on some macOS 26 systems.
   printf '%s\n' \
-    python3.13 \
     python3.12 \
     python3.11 \
+    python3.13 \
     python3.14 \
     python3 \
-    /opt/homebrew/bin/python3.13 \
     /opt/homebrew/bin/python3.12 \
     /opt/homebrew/bin/python3.11 \
+    /opt/homebrew/bin/python3.13 \
     /opt/homebrew/bin/python3.14 \
     /opt/homebrew/bin/python3 \
-    /usr/local/bin/python3.13 \
     /usr/local/bin/python3.12 \
     /usr/local/bin/python3.11 \
+    /usr/local/bin/python3.13 \
     /usr/local/bin/python3.14 \
     /usr/local/bin/python3 \
-    /opt/homebrew/opt/python@3.13/bin/python3.13 \
     /opt/homebrew/opt/python@3.12/bin/python3.12 \
     /opt/homebrew/opt/python@3.11/bin/python3.11 \
+    /opt/homebrew/opt/python@3.13/bin/python3.13 \
     /opt/homebrew/opt/python@3.14/bin/python3.14 \
-    /usr/local/opt/python@3.13/bin/python3.13 \
     /usr/local/opt/python@3.12/bin/python3.12 \
     /usr/local/opt/python@3.11/bin/python3.11 \
+    /usr/local/opt/python@3.13/bin/python3.13 \
     /usr/local/opt/python@3.14/bin/python3.14
 }
 
 python_is_supported() {
   "$1" - <<'PY' >/dev/null 2>&1
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+version = sys.version_info[:2]
+raise SystemExit(0 if (3, 11) <= version < (3, 13) else 1)
 PY
 }
 
@@ -335,6 +337,11 @@ python_version_text() {
 import sys
 print(sys.version.split()[0])
 PY
+}
+
+venv_python_is_supported() {
+  [[ -x "${VENV_DIR}/bin/python" ]] || return 1
+  python_is_supported "${VENV_DIR}/bin/python"
 }
 
 base_python_command() {
@@ -445,6 +452,37 @@ print("  ✓ required Python packages and versions")
 PY
 }
 
+check_qt_runtime() {
+  "$(python_command)" - <<'PY'
+import importlib.util
+import os
+from pathlib import Path
+
+spec = importlib.util.find_spec("PySide6")
+if spec is None or spec.origin is None:
+    print("  ✗ PySide6 missing")
+    raise SystemExit(1)
+
+root = Path(spec.origin).resolve().parent
+plugins = root / "Qt" / "plugins"
+platforms = plugins / "platforms"
+cocoa = platforms / "libqcocoa.dylib"
+if not cocoa.exists():
+    print(f"  ✗ Qt Cocoa platform plugin missing: {cocoa}")
+    raise SystemExit(1)
+
+os.environ["QT_PLUGIN_PATH"] = str(plugins)
+os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platforms)
+os.environ.setdefault("QT_MAC_WANTS_LAYER", "1")
+
+from PySide6 import QtCore, QtWidgets
+
+app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+app.quit()
+print(f"  ✓ Qt runtime: {QtCore.qVersion()} / cocoa plugin")
+PY
+}
+
 check_playwright_webkit() {
   "$(python_command)" - <<'PY'
 import importlib.util
@@ -472,17 +510,17 @@ install_requirements_or_explain() {
 
 필수 패키지 설치에 실패했습니다.
 
-PySide6는 Python 버전별 macOS wheel 제공 여부의 영향을 받습니다.
-이 앱은 PySide6 >=6.7,<6.11 범위를 사용하며, 너무 최신 Python (3.14+)
-에서는 아직 맞는 PySide6 배포 파일이 없을 수 있습니다.
+PySide6는 Python 버전별 macOS wheel과 Qt/macOS 런타임 안정성의 영향을 받습니다.
+이 앱은 PySide6 >=6.7,<6.11 범위를 사용하며, 현재 macOS 앱 번들은
+Python 3.12 또는 3.11 환경만 사용합니다.
 
-Homebrew 기본 Python이 3.14+ 인 경우 PySide6 호환 버전을 설치하세요:
-  brew install python@3.13     # 권장
-  brew install python@3.12
+Homebrew 기본 Python이 3.13+ 인 경우 호환 버전을 설치하세요:
+  brew install python@3.12     # 권장
+  brew install python@3.11
 
 그 뒤 Install jelly dict.command를 다시 실행하세요. 설치된 여러 Python 중
 원하는 버전을 강제하려면 JELLY_DICT_PYTHON 환경변수도 가능합니다:
-  JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.13 ./Install\ jelly\ dict.command
+  JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.12 ./Install\ jelly\ dict.command
 
 로그에 "Missing dependencies for SOCKS support" 가 보이면 셸의
 ALL_PROXY / HTTPS_PROXY 가 socks://... 로 설정돼 있는 경우입니다.
@@ -566,15 +604,17 @@ check_python_version() {
 import sys
 
 required = (3, 11)
+maximum = (3, 13)
 current = sys.version_info[:2]
 if current < required:
     print(f"  ✗ python3 >= {required[0]}.{required[1]} required, found {sys.version.split()[0]}")
     raise SystemExit(1)
+if current >= maximum:
+    print(f"  ✗ Python {current[0]}.{current[1]} is not used for Jelly Dict.app yet.")
+    print("    Python 3.13 + Qt can abort while creating the macOS Cocoa platform plugin")
+    print("    on some macOS 26 systems. Install Python 3.12 or 3.11 and rerun installer.")
+    raise SystemExit(1)
 print(f"  ✓ python3 version OK: {sys.version.split()[0]}")
-if current >= (3, 14):
-    print(f"  ! Python {current[0]}.{current[1]} detected; PySide6 wheels may not exist yet for this version.")
-    print("    If install fails with 'No matching distribution found for PySide6',")
-    print("    install Python 3.13, 3.12, or 3.11 and rerun Install jelly dict.command.")
 PY
 }
 
@@ -626,7 +666,7 @@ check_system_requirements() {
 
   local base_python
   if ! base_python="$(select_base_python)"; then
-    echo "  ✗ Python 3.11 이상을 찾지 못했습니다"
+    echo "  ✗ Python 3.12 또는 3.11을 찾지 못했습니다"
     echo "    확인한 Python 후보:"
     print_python_candidates
     failed=1
@@ -678,7 +718,7 @@ check_environment() {
 
   local base_python
   if ! base_python="$(select_base_python)"; then
-    echo "  ✗ Python 3.11 이상을 찾지 못했습니다"
+    echo "  ✗ Python 3.12 또는 3.11을 찾지 못했습니다"
     failed=1
   else
     echo "  ✓ selected Python: ${base_python} $(python_version_text "${base_python}")"
@@ -691,6 +731,11 @@ check_environment() {
     elif ! venv_matches_current_location; then
       echo "  ✗ virtual environment was created for a different folder"
       echo "    rerun Install jelly dict.command and allow dependency installation to recreate it"
+      failed=1
+    elif ! venv_python_is_supported; then
+      echo "  ✗ virtual environment Python is not supported: $("${VENV_DIR}/bin/python" -V 2>&1)"
+      echo "    Python 3.12 or 3.11 is required for the generated macOS app"
+      echo "    rerun Install jelly dict.command to recreate the environment"
       failed=1
     else
       echo "  ✓ virtual environment: ${VENV_DIR}"
@@ -706,7 +751,7 @@ check_environment() {
     echo "  ✓ requirements.txt"
   fi
 
-  if [[ "${INSTALL_MODE}" == "venv" && -d "${VENV_DIR}" ]] && venv_matches_current_location; then
+  if [[ "${INSTALL_MODE}" == "venv" && -d "${VENV_DIR}" ]] && venv_matches_current_location && venv_python_is_supported; then
     # shellcheck source=/dev/null
     source "${VENV_DIR}/bin/activate"
     can_check_packages=1
@@ -716,6 +761,12 @@ check_environment() {
 
   if [[ "${can_check_packages}" -eq 1 ]]; then
     if check_python_packages; then
+      :
+    else
+      failed=1
+    fi
+
+    if check_qt_runtime; then
       :
     else
       failed=1
@@ -763,7 +814,7 @@ save_install_mode
 save_python_command
 
 if [[ "${INSTALL_MODE}" == "venv" ]]; then
-  if [[ -d "${VENV_DIR}" ]] && ! venv_matches_current_location; then
+  if [[ -d "${VENV_DIR}" ]] && { ! venv_matches_current_location || ! venv_python_is_supported; }; then
     print_step "현재 폴더에 맞게 가상환경 재생성"
     rm -rf "${VENV_DIR}"
     print_ok "완료"

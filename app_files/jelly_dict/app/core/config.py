@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "jelly dict"
+APP_DISPLAY_NAME = "Jelly Dict"
 APP_SLUG = "jelly-dict"
 
 

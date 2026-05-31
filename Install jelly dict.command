@@ -19,7 +19,7 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-JELLY_DICT_VERSION="1.0.0"
+JELLY_DICT_VERSION="1.0.1"
 
 APP_NAME="Jelly Dict.app"
 QUICKSTART_SCRIPT="${SCRIPT_DIR}/app_files/scripts/quickstart.sh"

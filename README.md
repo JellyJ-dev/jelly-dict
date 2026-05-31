@@ -2,7 +2,7 @@
 
 <img src="app_files/assets/app-icon-1024.png" alt="jelly dict logo" width="96">
 
-> **현재 버전: v1.0.0**
+> **현재 버전: v1.0.1**
 
 **jelly dict**는 영어/일본어 단어를 빠르게 조회해 Excel 단어장에 저장하고, 필요하면 Anki `.apkg` 덱으로 내보내는 **macOS용 로컬 단어장 도구**입니다.
 
@@ -29,23 +29,23 @@ GitHub 저장소를 다운로드하거나 clone한 뒤, 포함된 installer를 �
 ## 지원 환경
 
 - macOS
-- **Python 3.11 / 3.12 / 3.13 권장** (3.14+ 는 PySide6 휠 부재로 실패할 수 있음)
+- **Python 3.12 권장**, Python 3.11 지원
 - Finder에서 `.command` 파일 실행 가능 환경
 
 Windows와 Linux는 공식 지원 대상이 아닙니다.
 
-installer는 `PySide6>=6.7,<6.11` 범위에서 현재 Python에 맞는 Qt 패키지를 설치합니다. PySide6 6.x 시리즈는 Python 3.13까지 macOS wheel을 제공합니다. Homebrew 기본 Python이 3.14 이상이면 `No matching distribution found for PySide6` 로 설치가 실패할 수 있으니, 다음과 같이 호환 버전을 설치한 뒤 다시 실행하세요:
+installer는 `PySide6>=6.7,<6.11` 범위에서 현재 Python에 맞는 Qt 패키지를 설치합니다. Python 3.13 + Qt 조합은 일부 macOS 26 환경에서 `.app` 실행 시 Cocoa platform plugin 생성 단계에서 abort가 확인되어, installer는 Python 3.12/3.11만 선택합니다. Homebrew 기본 Python이 3.13 이상이면 다음과 같이 호환 버전을 설치한 뒤 다시 실행하세요:
 
 ```bash
-brew install python@3.13       # 권장
-# 또는
 brew install python@3.12
+# 또는
+brew install python@3.11
 ```
 
 특정 Python을 강제하려면 `JELLY_DICT_PYTHON` 환경변수도 사용 가능:
 
 ```bash
-JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.13 ./Install\ jelly\ dict.command
+JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.12 ./Install\ jelly\ dict.command
 ```
 
 ---

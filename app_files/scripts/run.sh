@@ -42,17 +42,65 @@ base_python_command() {
     candidate="$(tr -d '\r\n' < "${PYTHON_COMMAND_FILE}")"
   fi
 
-  if [[ -n "${candidate}" ]] && command -v "${candidate}" >/dev/null 2>&1; then
+  if [[ -n "${candidate}" ]] && command -v "${candidate}" >/dev/null 2>&1 && python_is_supported "${candidate}"; then
     printf '%s\n' "${candidate}"
     return 0
   fi
 
-  if command -v python3 >/dev/null 2>&1; then
-    printf 'python3\n'
-    return 0
-  fi
+  local fallback
+  for fallback in python3.12 python3.11 python3; do
+    if command -v "${fallback}" >/dev/null 2>&1 && python_is_supported "${fallback}"; then
+      command -v "${fallback}"
+      return 0
+    fi
+  done
 
   return 1
+}
+
+python_is_supported() {
+  "$1" - <<'PY' >/dev/null 2>&1
+import sys
+version = sys.version_info[:2]
+raise SystemExit(0 if (3, 11) <= version < (3, 13) else 1)
+PY
+}
+
+python_version_text() {
+  "$1" - <<'PY' 2>/dev/null
+import sys
+print(sys.version.split()[0])
+PY
+}
+
+prepare_qt_runtime_env() {
+  local python_bin="$1"
+  local pyside_root
+
+  pyside_root="$("${python_bin}" - <<'PY' 2>/dev/null
+import importlib.util
+from pathlib import Path
+
+spec = importlib.util.find_spec("PySide6")
+if spec is None or spec.origin is None:
+    raise SystemExit(1)
+print(Path(spec.origin).resolve().parent)
+PY
+)" || return 1
+
+  if [[ -d "${pyside_root}/Qt/plugins/platforms" ]]; then
+    export QT_PLUGIN_PATH="${pyside_root}/Qt/plugins"
+    export QT_QPA_PLATFORM_PLUGIN_PATH="${pyside_root}/Qt/plugins/platforms"
+  fi
+
+  if [[ -d "${pyside_root}/Qt/qml" ]]; then
+    case ":${QML2_IMPORT_PATH:-}:" in
+      *":${pyside_root}/Qt/qml:"*) ;;
+      *) export QML2_IMPORT_PATH="${pyside_root}/Qt/qml${QML2_IMPORT_PATH:+:${QML2_IMPORT_PATH}}" ;;
+    esac
+  fi
+
+  export QT_MAC_WANTS_LAYER=1
 }
 
 quickstart_state_ok() {
@@ -107,6 +155,13 @@ if [[ "${INSTALL_MODE}" == "venv" ]]; then
     echo "  ${REPO_ROOT}/scripts/quickstart.sh" >&2
     exit 1
   fi
+
+  if ! python_is_supported "${VENV_DIR}/bin/python"; then
+    echo "Virtual environment Python is not supported: $("${VENV_DIR}/bin/python" -V 2>&1)" >&2
+    echo "Jelly Dict.app currently uses Python 3.12 or 3.11 on macOS." >&2
+    echo "Run Install jelly dict.command to recreate the environment." >&2
+    exit 1
+  fi
 fi
 
 cd "${APP_DIR}"
@@ -114,6 +169,7 @@ cd "${APP_DIR}"
 if [[ "${INSTALL_MODE}" == "venv" ]]; then
   # shellcheck source=/dev/null
   source "${VENV_DIR}/bin/activate"
+  prepare_qt_runtime_env python || true
   if [[ "${DETACH}" -eq 1 ]]; then
     mkdir -p "${APP_DIR}/.jelly_dict/logs"
     nohup python -m app.main >> "${APP_DIR}/.jelly_dict/logs/launcher.log" 2>&1 &
@@ -124,10 +180,18 @@ fi
 
 if [[ "${DETACH}" -eq 1 ]]; then
   mkdir -p "${APP_DIR}/.jelly_dict/logs"
-  base_python="$(base_python_command)"
+  if ! base_python="$(base_python_command)"; then
+    echo "Python 3.12 or 3.11 not found. Run Install jelly dict.command." >&2
+    exit 1
+  fi
+  prepare_qt_runtime_env "${base_python}" || true
   nohup "${base_python}" -m app.main >> "${APP_DIR}/.jelly_dict/logs/launcher.log" 2>&1 &
   exit 0
 fi
 
-base_python="$(base_python_command)"
+if ! base_python="$(base_python_command)"; then
+  echo "Python 3.12 or 3.11 not found. Run Install jelly dict.command." >&2
+  exit 1
+fi
+prepare_qt_runtime_env "${base_python}" || true
 exec "${base_python}" -m app.main
