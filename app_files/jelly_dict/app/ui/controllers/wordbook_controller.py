@@ -154,7 +154,8 @@ class WordbookController:
             for word in words
         }
         try:
-            removed = excel_writer.delete_entries(path, language, keys)
+            delete_outcome = excel_writer.delete_entries_with_backup(path, language, keys)
+            removed = delete_outcome.removed
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self._parent, "삭제 실패", str(exc))
             return
@@ -178,6 +179,8 @@ class WordbookController:
         message = (
             f"{'일본어' if language == 'ja' else '영어'} 단어장 {removed}개 삭제됨"
         )
+        if delete_outcome.backup_path is not None:
+            message += f" · 백업: {delete_outcome.backup_path.name}"
         if anki_removed:
             message += f" · Anki {anki_removed}개"
         if anki_errors:

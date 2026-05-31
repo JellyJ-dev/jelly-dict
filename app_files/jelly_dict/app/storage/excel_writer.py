@@ -8,6 +8,9 @@ keep working without import changes.
 """
 from __future__ import annotations
 
+import shutil
+from dataclasses import dataclass
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 
@@ -38,14 +41,23 @@ __all__ = [
     "COLUMN_WIDTHS",
     "HEADER_FILL",
     "HEADER_FONT",
+    "DeleteOutcome",
     "ensure_workbook",
     "append_entry",
     "update_or_append",
+    "backup_workbook",
     "delete_entries",
+    "delete_entries_with_backup",
     "save_with_resolver",
     "list_entries",
     "find_existing",
 ]
+
+
+@dataclass(frozen=True)
+class DeleteOutcome:
+    removed: int
+    backup_path: Path | None = None
 
 
 def ensure_workbook(path: Path, columns: list[str]) -> None:
@@ -108,21 +120,51 @@ def update_or_append(path: Path, entry: VocabularyEntry, columns: list[str]) -> 
     _save(wb, path)
 
 
+def backup_workbook(path: Path, reason: str = "manual") -> Path:
+    """Copy an existing workbook into a user-visible backup folder."""
+    if not path.exists():
+        raise StorageError(f"Excel file does not exist: {path}")
+    safe_reason = "".join(
+        ch if ch.isalnum() or ch in {"-", "_"} else "-"
+        for ch in (reason or "manual").strip().lower()
+    ).strip("-") or "manual"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    backup_dir = path.parent / "Jelly Dict Backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / f"{path.stem}.{safe_reason}.{timestamp}{path.suffix}"
+    try:
+        shutil.copy2(path, backup_path)
+    except OSError as exc:
+        raise StorageError(f"Excel backup failed: {exc}") from exc
+    return backup_path
+
+
 def delete_entries(path: Path, language: str, word_keys: set[str]) -> int:
     """Delete rows whose (language, normalized word) is in word_keys.
 
     Returns the number of rows removed. Preserves header styling and
     sheet structure.
     """
+    return delete_entries_with_backup(path, language, word_keys, create_backup=False).removed
+
+
+def delete_entries_with_backup(
+    path: Path,
+    language: str,
+    word_keys: set[str],
+    *,
+    create_backup: bool = True,
+) -> DeleteOutcome:
+    """Delete matching rows, optionally preserving a workbook backup first."""
     if not path.exists() or not word_keys:
-        return 0
+        return DeleteOutcome(0)
     wb = _load_for_write(path)
     if SHEET_NAME not in wb.sheetnames:
-        return 0
+        return DeleteOutcome(0)
     ws = wb[SHEET_NAME]
     columns = read_header(ws)
     if "language" not in columns or "word" not in columns:
-        return 0
+        return DeleteOutcome(0)
     lang_idx = columns.index("language") + 1
     word_idx = columns.index("word") + 1
 
@@ -135,11 +177,14 @@ def delete_entries(path: Path, language: str, word_keys: set[str]) -> int:
         key = normalize_word_key(word_val, language)  # type: ignore[arg-type]
         if key in word_keys:
             targets.append(row)
+    if not targets:
+        return DeleteOutcome(0)
+    backup_path = backup_workbook(path, f"delete-{language}") if create_backup else None
     # Delete bottom-up so indices stay valid.
     for row in reversed(targets):
         ws.delete_rows(row, 1)
     _save(wb, path)
-    return len(targets)
+    return DeleteOutcome(len(targets), backup_path)
 
 
 def save_with_resolver(

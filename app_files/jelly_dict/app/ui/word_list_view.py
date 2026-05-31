@@ -212,7 +212,8 @@ class WordListDialog(QtWidgets.QDialog):
         path = Path(self._excel_path_for(language))
         keys = {normalize_word_key(e.word, language) for e in entries}  # type: ignore[arg-type]
         try:
-            removed = excel_writer.delete_entries(path, language, keys)
+            delete_outcome = excel_writer.delete_entries_with_backup(path, language, keys)
+            removed = delete_outcome.removed
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "삭제 실패", str(exc))
             return
@@ -231,13 +232,24 @@ class WordListDialog(QtWidgets.QDialog):
             )
 
         self.deleted.emit(language, removed)
-        self._show_completion_notice(removed, anki_count, anki_errors)
+        self._show_completion_notice(
+            removed,
+            anki_count,
+            anki_errors,
+            delete_outcome.backup_path,
+        )
         self._reload()
 
     def _show_completion_notice(
-        self, excel_removed: int, anki_removed: int, errors: list[str]
+        self,
+        excel_removed: int,
+        anki_removed: int,
+        errors: list[str],
+        backup_path: Path | None,
     ) -> None:
         msg = f"Excel에서 {excel_removed}개 행을 삭제했습니다."
+        if backup_path is not None:
+            msg += f"\n삭제 전 백업을 만들었습니다:\n{backup_path}"
         if self._anki_sync and self._anki_sync.enabled:
             if anki_removed:
                 msg += f"\nAnki에서 {anki_removed}개 카드도 삭제했습니다."

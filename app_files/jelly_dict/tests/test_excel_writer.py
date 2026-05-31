@@ -16,6 +16,8 @@ from app.core.models import (
 from app.storage.excel_writer import (
     SHEET_NAME,
     append_entry,
+    backup_workbook,
+    delete_entries_with_backup,
     ensure_workbook,
     find_existing,
     update_or_append,
@@ -119,12 +121,55 @@ def test_delete_entries_removes_matching_rows(tmp_path: Path):
 
     path = tmp_path / "vocab.xlsx"
     append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
-    append_entry(path, VocabularyEntry(language="en", word="banana"), EXCEL_COLUMN_KEYS_DEFAULT)
+    append_entry(
+        path,
+        VocabularyEntry(language="en", word="banana"),
+        EXCEL_COLUMN_KEYS_DEFAULT,
+    )
 
     removed = delete_entries(path, "en", {"apple"})
     assert removed == 1
     remaining = list_entries(path)
     assert [e.word for e in remaining] == ["banana"]
+
+
+def test_delete_entries_with_backup_preserves_original_workbook(tmp_path: Path):
+    from app.storage.excel_writer import list_entries
+
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    append_entry(path, VocabularyEntry(language="en", word="banana"), EXCEL_COLUMN_KEYS_DEFAULT)
+
+    outcome = delete_entries_with_backup(path, "en", {"apple"})
+
+    assert outcome.removed == 1
+    assert outcome.backup_path is not None
+    assert outcome.backup_path.exists()
+    assert outcome.backup_path.parent == tmp_path / "Jelly Dict Backups"
+    assert [e.word for e in list_entries(path)] == ["banana"]
+    assert [e.word for e in list_entries(outcome.backup_path)] == ["apple", "banana"]
+
+
+def test_delete_entries_with_backup_skips_backup_when_no_rows_match(tmp_path: Path):
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+
+    outcome = delete_entries_with_backup(path, "en", {"banana"})
+
+    assert outcome.removed == 0
+    assert outcome.backup_path is None
+    assert not (tmp_path / "Jelly Dict Backups").exists()
+
+
+def test_backup_workbook_uses_user_visible_backup_folder(tmp_path: Path):
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+
+    backup = backup_workbook(path, "Manual Snapshot")
+
+    assert backup.exists()
+    assert backup.parent.name == "Jelly Dict Backups"
+    assert ".manual-snapshot." in backup.name
 
 
 def test_delete_entries_noop_when_keys_missing(tmp_path: Path):
