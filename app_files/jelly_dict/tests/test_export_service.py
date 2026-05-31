@@ -74,6 +74,96 @@ def test_export_row_reuses_matching_cache_structure_without_mutating_cache() -> 
     assert cached.meaning_groups[0].senses[0].gloss == "공연"
 
 
+def test_export_row_uses_excel_meanings_detail_before_matching_cache() -> None:
+    cached = VocabularyEntry(
+        language="en",
+        word="performance",
+        part_of_speech=["Noun"],
+        meanings_summary="1.공연 2.실적",
+        meaning_groups=[
+            MeaningGroup(pos="Noun", senses=[Sense(number=1, gloss="cache-only")])
+        ],
+    )
+
+    entry = entry_from_export_row(
+        _row(
+            meanings_detail=(
+                "Noun\n"
+                "  1. 공연\n"
+                "    a. 무대 공연\n"
+                "      = show, concert\n"
+                "  2. 실적"
+            ),
+            examples="new example",
+            example_translations="새 예문",
+        ),
+        cached,
+    )
+
+    group = entry.meaning_groups[0]
+    first_sub = group.senses[0].sub_senses[0]
+    assert group.pos == "Noun"
+    assert [sense.gloss for sense in group.senses] == ["공연", "실적"]
+    assert first_sub.gloss == "무대 공연"
+    assert first_sub.synonyms == ["show", "concert"]
+    assert first_sub.examples[0].source_text == "new example"
+
+
+def test_export_row_uses_matching_cache_when_detail_column_is_absent() -> None:
+    cached = VocabularyEntry(
+        language="en",
+        word="performance",
+        part_of_speech=["Noun"],
+        meanings_summary="1.공연 2.실적",
+        meaning_groups=[
+            MeaningGroup(
+                pos="Noun",
+                senses=[
+                    Sense(number=1, gloss="공연"),
+                    Sense(number=2, gloss="실적"),
+                ],
+            )
+        ],
+    )
+
+    entry = entry_from_export_row(_row(), cached)
+
+    assert [sense.gloss for sense in entry.meaning_groups[0].senses] == ["공연", "실적"]
+
+
+def test_export_row_does_not_restore_cache_when_detail_column_is_cleared() -> None:
+    cached = VocabularyEntry(
+        language="en",
+        word="performance",
+        part_of_speech=["Noun"],
+        meanings_summary="1.공연 2.실적",
+        meaning_groups=[
+            MeaningGroup(pos="Noun", senses=[Sense(number=1, gloss="cache-only")])
+        ],
+    )
+
+    entry = entry_from_export_row(_row(meanings_detail=""), cached)
+
+    assert [sense.gloss for sense in entry.meaning_groups[0].senses] == ["1.공연 2.실적"]
+
+
+def test_export_row_does_not_restore_cache_when_detail_column_is_header_only() -> None:
+    cached = VocabularyEntry(
+        language="en",
+        word="performance",
+        part_of_speech=["Noun"],
+        meanings_summary="1.공연 2.실적",
+        meaning_groups=[
+            MeaningGroup(pos="Noun", senses=[Sense(number=1, gloss="cache-only")])
+        ],
+    )
+
+    entry = entry_from_export_row(_row(meanings_detail="Noun"), cached)
+
+    assert entry.meaning_groups[0].pos == "Noun"
+    assert entry.meaning_groups[0].senses == []
+
+
 def test_export_row_keeps_excel_examples_ahead_of_cache_examples() -> None:
     cached = VocabularyEntry(
         language="en",

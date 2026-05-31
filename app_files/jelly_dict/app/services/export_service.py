@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from copy import deepcopy
 from pathlib import Path
 
@@ -120,8 +121,12 @@ def _entry_from_flat_row(data: dict) -> VocabularyEntry:
 
     pos_list = _split_csv(data.get("part_of_speech", ""))
     summary = str(data.get("meanings_summary", "") or "")
-    meaning_groups: list[MeaningGroup] = []
-    if pos_list and summary:
+    detail = str(data.get("meanings_detail", "") or "")
+    meaning_groups = _parse_meanings_detail(detail)
+    if meaning_groups:
+        if examples:
+            _replace_nested_examples(meaning_groups, examples)
+    elif pos_list and summary:
         meaning_groups = [
             MeaningGroup(
                 pos=pos_list[0],
@@ -166,9 +171,14 @@ def entry_from_export_row(
     if cached is None:
         return base
 
+    has_meanings_detail_column = "meanings_detail" in data
     cached_summary = cached.meanings_summary or build_meanings_summary(cached)
     base_summary = str(data.get("meanings_summary", "") or base.meanings_summary or "")
-    if cached.meaning_groups and (not base_summary or base_summary == cached_summary):
+    if (
+        not has_meanings_detail_column
+        and cached.meaning_groups
+        and (not base_summary or base_summary == cached_summary)
+    ):
         base.meaning_groups = deepcopy(cached.meaning_groups)
         if base.examples_flat:
             _replace_nested_examples(base.meaning_groups, base.examples_flat)
@@ -185,6 +195,67 @@ def entry_from_export_row(
 
     base.source_provider = "excel"
     return base
+
+
+def _parse_meanings_detail(value: str) -> list[MeaningGroup]:
+    """Parse the plain-text detail format written to Excel back into groups."""
+    groups: list[MeaningGroup] = []
+    current_group: MeaningGroup | None = None
+    current_sense: Sense | None = None
+    current_sub: SubSense | None = None
+
+    for raw_line in (value or "").splitlines():
+        if not raw_line.strip():
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        text = raw_line.strip()
+
+        if indent == 0:
+            current_group = MeaningGroup(pos=text, senses=[])
+            groups.append(current_group)
+            current_sense = None
+            current_sub = None
+            continue
+
+        if current_group is None:
+            current_group = MeaningGroup(pos="", senses=[])
+            groups.append(current_group)
+
+        if text.startswith("="):
+            if current_sub is not None:
+                current_sub.synonyms.extend(_split_csv(text[1:]))
+            continue
+
+        if indent <= 2:
+            number, gloss = _parse_numbered_detail_line(text)
+            current_sense = Sense(number=number, gloss=gloss, sub_senses=[])
+            current_group.senses.append(current_sense)
+            current_sub = None
+            continue
+
+        label, gloss = _parse_labeled_detail_line(text)
+        current_sub = SubSense(label=label, gloss=gloss)
+        if current_sense is None:
+            current_sense = Sense(number=0, gloss="", sub_senses=[])
+            current_group.senses.append(current_sense)
+        current_sense.sub_senses.append(current_sub)
+
+    return [group for group in groups if group.pos or group.senses]
+
+
+def _parse_numbered_detail_line(text: str) -> tuple[int, str]:
+    match = re.match(r"(?:(\d+)\.|[-*])\s*(.*)", text)
+    if not match:
+        return 0, text
+    number = int(match.group(1) or 0)
+    return number, match.group(2).strip()
+
+
+def _parse_labeled_detail_line(text: str) -> tuple[str, str]:
+    match = re.match(r"(?:(?P<label>[^.\s]+)\.|[-*])\s*(?P<gloss>.*)", text)
+    if not match:
+        return "", text
+    return (match.group("label") or "").strip(), match.group("gloss").strip()
 
 
 def _replace_nested_examples(

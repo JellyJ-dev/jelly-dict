@@ -820,6 +820,11 @@ QDialog#duplicateDialog QLabel {
     font-size: 13px;
     font-weight: 600;
 }
+QScrollArea#duplicateScroll,
+QScrollArea#duplicateScroll > QWidget > QWidget {
+    background: transparent;
+    border: none;
+}
 QDialog#duplicateDialog QGroupBox {
     background: #20201f;
     border: 1px solid #3f3f3c;
