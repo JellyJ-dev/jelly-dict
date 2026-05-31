@@ -121,7 +121,7 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         buttons = QtWidgets.QDialogButtonBox()
         export_btn = buttons.addButton("내보내기", QtWidgets.QDialogButtonBox.AcceptRole)
         export_btn.setObjectName("settingsPrimaryButton")
-        if self._preflight.blockers:
+        if self._has_hard_blockers():
             export_btn.setEnabled(False)
             export_btn.setToolTip("진행 불가 항목을 해결한 뒤 내보낼 수 있습니다.")
         cancel_btn = buttons.addButton("취소", QtWidgets.QDialogButtonBox.RejectRole)
@@ -170,5 +170,18 @@ class ExportOptionsDialog(QtWidgets.QDialog):
             lines.append(f"확인 필요: {issue.message}")
         return "\n".join(lines)
 
+    def _has_hard_blockers(self) -> bool:
+        return any(
+            not _audio_policy_can_resolve(issue.message)
+            for issue in self._preflight.blockers
+        )
+
     def _open_settings(self) -> None:
         self.done(2)
+
+
+def _audio_policy_can_resolve(message: str) -> bool:
+    return any(
+        marker in message
+        for marker in ("TTS", "엔진", "VOICEVOX", "음성")
+    )

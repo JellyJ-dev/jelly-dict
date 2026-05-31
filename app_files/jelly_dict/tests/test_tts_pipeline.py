@@ -132,6 +132,57 @@ def test_pipeline_writes_audio_and_caches(isolated_runtime, monkeypatch):
     assert batch.media_paths.count(p1) == 1
 
 
+def test_pipeline_regenerates_empty_cached_audio(isolated_runtime, monkeypatch):
+    _patch_registry(monkeypatch)
+    from app.anki.tts.pipeline import TTSPipeline
+
+    s = _Settings()
+    path = tts_cache.cache_path(
+        "en",
+        "fake",
+        "v_en",
+        "hello",
+        bitrate=s.tts_bitrate,
+        sample_rate=s.tts_sample_rate,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+
+    pipeline = TTSPipeline(s)
+    result = pipeline.synthesize("hello", "en")
+
+    assert result == path
+    assert path.read_bytes() == b"fake-mp3"
+
+
+def test_pipeline_removes_empty_audio_after_provider_failure(
+    isolated_runtime,
+    monkeypatch,
+):
+    class _BrokenPartial(_FakeProvider):
+        def synthesize(self, text, *, language, voice, out_path):
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(b"")
+            raise RuntimeError("boom")
+
+    _patch_registry(monkeypatch, _BrokenPartial)
+    from app.anki.tts.pipeline import TTSPipeline
+
+    s = _Settings()
+    path = tts_cache.cache_path(
+        "en",
+        "fake",
+        "v_en",
+        "hello",
+        bitrate=s.tts_bitrate,
+        sample_rate=s.tts_sample_rate,
+    )
+    pipeline = TTSPipeline(s)
+
+    assert pipeline.synthesize("hello", "en") is None
+    assert not path.exists()
+
+
 def test_pipeline_failure_swallowed(isolated_runtime, monkeypatch):
     class _Broken(_FakeProvider):
         def synthesize(self, text, *, language, voice, out_path):

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import tempfile
 from dataclasses import asdict, dataclass, field, fields
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -130,6 +134,7 @@ class SettingsStore:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             # Corrupt settings: rebuild from defaults rather than crash.
+            self._backup_corrupt_settings()
             self._cache = _defaults()
             self.save(self._cache)
             return self._cache
@@ -143,10 +148,30 @@ class SettingsStore:
 
     def save(self, settings: Settings) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(settings.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        payload = json.dumps(settings.to_dict(), ensure_ascii=False, indent=2) + "\n"
+        temp_name = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                delete=False,
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                encoding="utf-8",
+            ) as temp_file:
+                temp_file.write(payload)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+                temp_name = temp_file.name
+            Path(temp_name).replace(self.path)
+        finally:
+            if temp_name:
+                temp_path = Path(temp_name)
+                if temp_path.exists():
+                    try:
+                        temp_path.unlink()
+                    except OSError:
+                        pass
         self._cache = settings
 
     def update(self, **changes: Any) -> Settings:
@@ -156,3 +181,16 @@ class SettingsStore:
                 setattr(current, key, value)
         self.save(current)
         return current
+
+    def _backup_corrupt_settings(self) -> Path | None:
+        if not self.path.exists():
+            return None
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        backup_path = self.path.with_name(
+            f"{self.path.name}.corrupt.{timestamp}.bak"
+        )
+        try:
+            shutil.copy2(self.path, backup_path)
+        except OSError:
+            return None
+        return backup_path

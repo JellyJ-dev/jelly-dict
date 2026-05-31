@@ -59,28 +59,31 @@ class ExportService:
             return []
 
         wb = load_workbook(path, read_only=True)
-        if SHEET_NAME not in wb.sheetnames:
-            return []
-        ws = wb[SHEET_NAME]
-        rows = ws.iter_rows(values_only=True)
         try:
-            header = next(rows)
-        except StopIteration:
-            return []
-        keys = [label_to_key(label) for label in header]
+            if SHEET_NAME not in wb.sheetnames:
+                return []
+            ws = wb[SHEET_NAME]
+            rows = ws.iter_rows(values_only=True)
+            try:
+                header = next(rows)
+            except StopIteration:
+                return []
+            keys = [label_to_key(label) for label in header]
 
-        entries: list[VocabularyEntry] = []
-        for raw in rows:
-            if raw is None:
-                continue
-            data = dict(zip(keys, [v if v is not None else "" for v in raw]))
-            if not data.get("word"):
-                continue
-            row_language = str(data.get("language", "") or "").strip()
-            if row_language and row_language != language:
-                continue
-            entries.append(self._row_to_entry(data))
-        return entries
+            entries: list[VocabularyEntry] = []
+            for raw in rows:
+                if raw is None:
+                    continue
+                data = dict(zip(keys, [v if v is not None else "" for v in raw]))
+                if not data.get("word"):
+                    continue
+                row_language = str(data.get("language", "") or "").strip()
+                if row_language != language:
+                    continue
+                entries.append(self._row_to_entry(data))
+            return entries
+        finally:
+            wb.close()
 
     def _excel_path(self, language: str) -> Path | None:
         path_str = self._settings.excel_path_for(language)
@@ -103,7 +106,7 @@ def _entry_from_flat_row(data: dict) -> VocabularyEntry:
     word = str(data.get("word", "")).strip()
     language = str(data.get("language", "en")).strip() or "en"
     sources = [s for s in str(data.get("examples", "") or "").split("\n") if s]
-    translations = [s for s in str(data.get("example_translations", "") or "").split("\n") if s]
+    translations = str(data.get("example_translations", "") or "").split("\n")
     examples = []
     for idx, src in enumerate(sources):
         examples.append(

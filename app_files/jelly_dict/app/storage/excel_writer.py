@@ -101,10 +101,13 @@ def ensure_workbook(path: Path, columns: list[str]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
-    ws = wb.active
-    ws.title = SHEET_NAME
-    _write_header(ws, columns)
-    _save(wb, path)
+    try:
+        ws = wb.active
+        ws.title = SHEET_NAME
+        _write_header(ws, columns)
+        _save(wb, path)
+    finally:
+        wb.close()
 
 
 def append_entry(path: Path, entry: VocabularyEntry, columns: list[str]) -> None:
@@ -113,20 +116,23 @@ def append_entry(path: Path, entry: VocabularyEntry, columns: list[str]) -> None
         ensure_workbook(path, columns)
 
     wb = _load_for_write(path)
-    if SHEET_NAME not in wb.sheetnames:
-        ws = wb.create_sheet(SHEET_NAME)
-        _write_header(ws, columns)
-    else:
-        ws = wb[SHEET_NAME]
+    try:
+        if SHEET_NAME not in wb.sheetnames:
+            ws = wb.create_sheet(SHEET_NAME)
+            _write_header(ws, columns)
+        else:
+            ws = wb[SHEET_NAME]
 
-    file_columns = read_header(ws) or columns
-    if not read_header(ws):
-        _write_header(ws, file_columns)
+        file_columns = read_header(ws) or columns
+        if not read_header(ws):
+            _write_header(ws, file_columns)
 
-    row_values = [_render_cell(entry, key) for key in file_columns]
-    ws.append(row_values)
-    _style_last_row(ws, file_columns)
-    _save(wb, path)
+        row_values = [_render_cell(entry, key) for key in file_columns]
+        ws.append(row_values)
+        _style_last_row(ws, file_columns)
+        _save(wb, path)
+    finally:
+        wb.close()
 
 
 def update_or_append(path: Path, entry: VocabularyEntry, columns: list[str]) -> None:
@@ -136,23 +142,26 @@ def update_or_append(path: Path, entry: VocabularyEntry, columns: list[str]) -> 
         return
 
     wb = _load_for_write(path)
-    if SHEET_NAME not in wb.sheetnames:
-        wb.close()
-        append_entry(path, entry, columns)
-        return
+    try:
+        if SHEET_NAME not in wb.sheetnames:
+            ws = wb.create_sheet(SHEET_NAME)
+            _write_header(ws, columns)
+        else:
+            ws = wb[SHEET_NAME]
 
-    ws = wb[SHEET_NAME]
-    file_columns = read_header(ws) or columns
-    target_row = _find_row(ws, file_columns, entry)
-    values = [_render_cell(entry, key) for key in file_columns]
-    if target_row is None:
-        ws.append(values)
-        _style_last_row(ws, file_columns)
-    else:
-        for col_idx, value in enumerate(values, start=1):
-            ws.cell(row=target_row, column=col_idx, value=value)
-        _style_row(ws, target_row, file_columns)
-    _save(wb, path)
+        file_columns = read_header(ws) or columns
+        target_row = _find_row(ws, file_columns, entry)
+        values = [_render_cell(entry, key) for key in file_columns]
+        if target_row is None:
+            ws.append(values)
+            _style_last_row(ws, file_columns)
+        else:
+            for col_idx, value in enumerate(values, start=1):
+                ws.cell(row=target_row, column=col_idx, value=value)
+            _style_row(ws, target_row, file_columns)
+        _save(wb, path)
+    finally:
+        wb.close()
 
 
 def backup_workbook(path: Path, reason: str = "manual") -> Path:
@@ -194,32 +203,35 @@ def delete_entries_with_backup(
     if not path.exists() or not word_keys:
         return DeleteOutcome(0)
     wb = _load_for_write(path)
-    if SHEET_NAME not in wb.sheetnames:
-        return DeleteOutcome(0)
-    ws = wb[SHEET_NAME]
-    columns = read_header(ws)
-    if "language" not in columns or "word" not in columns:
-        return DeleteOutcome(0)
-    lang_idx = columns.index("language") + 1
-    word_idx = columns.index("word") + 1
+    try:
+        if SHEET_NAME not in wb.sheetnames:
+            return DeleteOutcome(0)
+        ws = wb[SHEET_NAME]
+        columns = read_header(ws)
+        if "language" not in columns or "word" not in columns:
+            return DeleteOutcome(0)
+        lang_idx = columns.index("language") + 1
+        word_idx = columns.index("word") + 1
 
-    targets: list[int] = []
-    for row in range(2, ws.max_row + 1):
-        lang_val = ws.cell(row=row, column=lang_idx).value
-        word_val = ws.cell(row=row, column=word_idx).value
-        if lang_val != language or not isinstance(word_val, str):
-            continue
-        key = normalize_word_key(word_val, language)  # type: ignore[arg-type]
-        if key in word_keys:
-            targets.append(row)
-    if not targets:
-        return DeleteOutcome(0)
-    backup_path = backup_workbook(path, f"delete-{language}") if create_backup else None
-    # Delete bottom-up so indices stay valid.
-    for row in reversed(targets):
-        ws.delete_rows(row, 1)
-    _save(wb, path)
-    return DeleteOutcome(len(targets), backup_path)
+        targets: list[int] = []
+        for row in range(2, ws.max_row + 1):
+            lang_val = ws.cell(row=row, column=lang_idx).value
+            word_val = ws.cell(row=row, column=word_idx).value
+            if lang_val != language or not isinstance(word_val, str):
+                continue
+            key = normalize_word_key(word_val, language)  # type: ignore[arg-type]
+            if key in word_keys:
+                targets.append(row)
+        if not targets:
+            return DeleteOutcome(0)
+        backup_path = backup_workbook(path, f"delete-{language}") if create_backup else None
+        # Delete bottom-up so indices stay valid.
+        for row in reversed(targets):
+            ws.delete_rows(row, 1)
+        _save(wb, path)
+        return DeleteOutcome(len(targets), backup_path)
+    finally:
+        wb.close()
 
 
 def save_with_resolver(
@@ -250,50 +262,53 @@ def save_with_resolver(
         ensure_workbook(path, columns)
 
     wb = _load_for_write(path)
-    if SHEET_NAME not in wb.sheetnames:
-        ws = wb.create_sheet(SHEET_NAME)
-        _write_header(ws, columns)
-    else:
-        ws = wb[SHEET_NAME]
-
-    file_columns = read_header(ws) or columns
-    if not read_header(ws):
-        _write_header(ws, file_columns)
-
-    existing_row = _find_row(ws, file_columns, entry)
-    existing_entry: VocabularyEntry | None = None
-    if existing_row is not None:
-        raw = tuple(
-            ws.cell(row=existing_row, column=col_idx).value
-            for col_idx in range(1, len(file_columns) + 1)
-        )
-        existing_entry = _row_to_entry(file_columns, raw)
-
-    action, resolved = resolver(existing_entry, entry)
-
-    if action == "skip":
-        # Workbook unchanged — don't bother saving.
-        return WriteOutcome(action, existing_entry or entry)
-
-    values = [_render_cell(resolved, key) for key in file_columns]
-    backup_path = None
-    if action == "overwrite" and existing_row is not None:
-        if backup_on_overwrite:
-            backup_path = backup_workbook(path, f"overwrite-{entry.language}")
-        for col_idx, value in enumerate(values, start=1):
-            ws.cell(row=existing_row, column=col_idx, value=value)
-        _style_row(ws, existing_row, file_columns)
-    else:
-        # "create" or "append_new" both result in a new row at the end.
-        ws.append(values)
-        _style_last_row(ws, file_columns)
     try:
-        _save(wb, path)
-    except StorageError as exc:
-        if backup_path is not None:
-            _raise_with_backup_hint(exc, backup_path)
-        raise
-    return WriteOutcome(action, resolved, backup_path)
+        if SHEET_NAME not in wb.sheetnames:
+            ws = wb.create_sheet(SHEET_NAME)
+            _write_header(ws, columns)
+        else:
+            ws = wb[SHEET_NAME]
+
+        file_columns = read_header(ws) or columns
+        if not read_header(ws):
+            _write_header(ws, file_columns)
+
+        existing_row = _find_row(ws, file_columns, entry)
+        existing_entry: VocabularyEntry | None = None
+        if existing_row is not None:
+            raw = tuple(
+                ws.cell(row=existing_row, column=col_idx).value
+                for col_idx in range(1, len(file_columns) + 1)
+            )
+            existing_entry = _row_to_entry(file_columns, raw)
+
+        action, resolved = resolver(existing_entry, entry)
+
+        if action == "skip":
+            # Workbook unchanged — don't bother saving.
+            return WriteOutcome(action, existing_entry or entry)
+
+        values = [_render_cell(resolved, key) for key in file_columns]
+        backup_path = None
+        if action == "overwrite" and existing_row is not None:
+            if backup_on_overwrite:
+                backup_path = backup_workbook(path, f"overwrite-{entry.language}")
+            for col_idx, value in enumerate(values, start=1):
+                ws.cell(row=existing_row, column=col_idx, value=value)
+            _style_row(ws, existing_row, file_columns)
+        else:
+            # "create" or "append_new" both result in a new row at the end.
+            ws.append(values)
+            _style_last_row(ws, file_columns)
+        try:
+            _save(wb, path)
+        except StorageError as exc:
+            if backup_path is not None:
+                _raise_with_backup_hint(exc, backup_path)
+            raise
+        return WriteOutcome(action, resolved, backup_path)
+    finally:
+        wb.close()
 
 
 # ---------- internal helpers (private) ----------------------------

@@ -228,7 +228,8 @@ class WordListDialog(QtWidgets.QDialog):
         anki_errors: list[str] = []
         if self._anki_sync and self._anki_sync.enabled:
             anki_count, anki_errors = self._anki_sync.delete_words(
-                [e.word for e in entries]
+                [e.word for e in entries],
+                language,
             )
 
         self.deleted.emit(language, removed)

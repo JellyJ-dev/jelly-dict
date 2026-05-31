@@ -49,6 +49,13 @@ def has_cached(
     ).exists()
 
 
+def is_valid_audio_file(path: Path) -> bool:
+    try:
+        return path.exists() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
 def clear_cache() -> int:
     """Remove all cached mp3 files. Returns count removed."""
     base = config.tts_cache_dir()

@@ -169,7 +169,7 @@ class WordbookController:
         anki_removed = 0
         anki_errors: list[str] = []
         if self._anki_sync.enabled:
-            anki_removed, anki_errors = self._anki_sync.delete_words(words)
+            anki_removed, anki_errors = self._anki_sync.delete_words(words, language)
 
         # Keep the saved-word index current without re-reading both Excel
         # files on the UI thread; the visible wordbook list below reads only

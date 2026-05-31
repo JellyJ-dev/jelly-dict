@@ -33,6 +33,9 @@ def test_corrupt_file_is_replaced_with_defaults(isolated_runtime):
     assert settings.show_preview is False
     # And the file is now valid JSON.
     json.loads(store.path.read_text(encoding="utf-8"))
+    backups = list(store.path.parent.glob(f"{store.path.name}.corrupt.*.bak"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "not json"
 
 
 def test_unknown_keys_are_ignored(isolated_runtime):

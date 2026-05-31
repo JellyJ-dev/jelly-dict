@@ -33,19 +33,24 @@ class AnkiSyncService:
             else (False, "AnkiConnect 응답이 없습니다.")
         )
 
-    def delete_words(self, words: list[str]) -> tuple[int, list[str]]:
+    def delete_words(
+        self,
+        words: list[str],
+        language: str | None = None,
+    ) -> tuple[int, list[str]]:
         """Delete every Anki note whose 'Word' field matches one of
         `words`. Returns (deleted_count, errors)."""
         if not words or not self.enabled:
             return 0, []
         client = self._client()
+        deck_prefix = self._deck_prefix_for(language)
         errors: list[str] = []
         total_deleted = 0
         all_ids: set[int] = set()
         for word in words:
             try:
                 ids = client.find_notes_by_field(
-                    deck_prefix=self._settings.ankiconnect_deck_prefix,
+                    deck_prefix=deck_prefix,
                     field="Word",
                     value=word,
                 )
@@ -60,3 +65,9 @@ class AnkiSyncService:
         except AnkiConnectError as exc:
             errors.append(str(exc))
         return total_deleted, errors
+
+    def _deck_prefix_for(self, language: str | None) -> str:
+        base = (self._settings.ankiconnect_deck_prefix or "").strip()
+        if language in ("en", "ja") and base:
+            return f"{base}::{language.upper()}"
+        return base

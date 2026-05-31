@@ -573,6 +573,8 @@ class WordInputView(QtWidgets.QWidget):
         if len(bulk_words) > 1:
             self.bulkSubmitted.emit(bulk_words, self._forced_language)
             return
+        if len(bulk_words) == 1 and BULK_INPUT_SPLIT_RE.search(word):
+            word = bulk_words[0]
         if len(self._ocr_selected_tokens) > 1:
             self.ocrBatchSubmitted.emit(list(self._ocr_selected_tokens), self._forced_language)
             return
@@ -1104,6 +1106,7 @@ class WordInputView(QtWidgets.QWidget):
             self.queue_chips_layout.addWidget(more_chip)
 
     def set_wordbook(self, language: str, items: list[WordbookItem]) -> None:
+        previous_mode = self._list_mode
         self._list_mode = language
         self._wordbook_items = list(items)
         title = "일본어 단어장" if language == "ja" else "영어 단어장"
@@ -1118,6 +1121,10 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_export_btn.setEnabled(bool(items))
         self.wordbook_export_btn.set_language(language)
         self.wordbook_delete_btn.setVisible(True)
+        self._search_debounce.stop()
+        self.wordbook_search.setPlaceholderText("단어 / 뜻 검색...")
+        if previous_mode != language:
+            self.wordbook_search.clear()
         self.wordbook_search.setVisible(True)
         self.wordbook_search.setMaximumHeight(16777215)
         self.recent_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)

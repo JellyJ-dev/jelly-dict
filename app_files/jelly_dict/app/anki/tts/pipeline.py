@@ -15,7 +15,7 @@ from typing import Optional
 
 from app.anki.tts import build_provider, get_provider_info
 from app.anki.tts.base import TTSResult
-from app.anki.tts.cache import cache_path
+from app.anki.tts.cache import cache_path, is_valid_audio_file
 
 logger = logging.getLogger(__name__)
 
@@ -83,15 +83,21 @@ class TTSPipeline:
             sample_rate=getattr(self._settings, "tts_sample_rate", None),
         )
 
-        if not out_path.exists():
+        if not is_valid_audio_file(out_path):
+            _remove_partial_audio(out_path)
             try:
                 result: TTSResult = provider.synthesize(
                     text, language=language, voice=voice, out_path=out_path,
                 )
             except Exception as exc:
+                _remove_partial_audio(out_path)
                 logger.warning(
                     "TTS synth failed (%s/%s): %s", name, language, type(exc).__name__,
                 )
+                return None
+            if not is_valid_audio_file(result.path):
+                _remove_partial_audio(result.path)
+                logger.warning("TTS synth produced empty audio (%s/%s)", name, language)
                 return None
         else:
             # Use stored metadata when re-using cached audio: rebuild a
@@ -118,3 +124,11 @@ class TTSPipeline:
                 batch.credits.add(result.credit_text)
 
         return result.path
+
+
+def _remove_partial_audio(path: Path) -> None:
+    try:
+        if path.exists() and path.stat().st_size <= 0:
+            path.unlink()
+    except OSError:
+        pass

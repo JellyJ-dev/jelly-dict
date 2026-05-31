@@ -103,3 +103,29 @@ def test_export_dialog_disables_export_button_when_blocked(qtbot, tmp_path: Path
     )
 
     assert not export_btn.isEnabled()
+
+
+def test_export_dialog_keeps_button_enabled_for_audio_resolvable_blocker(
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    plan = build_export_plan(
+        Settings(tts_enabled=True),
+        language="en",
+        deck_name="JellyDict::EN",
+        card_count=10,
+    )
+    dialog = ExportOptionsDialog(
+        plan=plan,
+        output_path=tmp_path / "out.apkg",
+        preflight=PreflightResult((PreflightIssue("block", "TTS 엔진이 설치되어 있지 않습니다."),)),
+    )
+    qtbot.addWidget(dialog)
+
+    export_btn = next(
+        button
+        for button in dialog.findChildren(QtWidgets.QPushButton)
+        if button.text() == "내보내기"
+    )
+
+    assert export_btn.isEnabled()

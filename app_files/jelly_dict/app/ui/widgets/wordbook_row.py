@@ -61,14 +61,15 @@ class WordbookRow(QtWidgets.QFrame):
         )
         top.addWidget(word_label, 1)
 
-        if language == "ja":
-            reading_label = _ElideLabel(reading if reading else "")
+        if language == "ja" and reading:
+            reading_label = _ElideLabel(reading)
             reading_label.setObjectName("wordbookReading")
             reading_label.setMinimumWidth(0)
+            reading_label.setMaximumWidth(220)
             reading_label.setSizePolicy(
-                QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed
+                QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
             )
-            top.addWidget(reading_label, 1)
+            top.addWidget(reading_label, 0)
         top.addStretch(0)
 
         meaning_label = _ElideLabel(hint)

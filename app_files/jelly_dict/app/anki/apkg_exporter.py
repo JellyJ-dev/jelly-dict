@@ -14,6 +14,7 @@ the card templates via ``WordAudio`` / ``ExampleAudios`` fields.
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
@@ -114,7 +115,13 @@ def export_apkg(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        package.write_to_file(str(path))
+        temp_path = _new_temp_path(path)
+        try:
+            package.write_to_file(str(temp_path))
+            temp_path.replace(path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
     except OSError as exc:
         raise ExportError(str(exc)) from exc
     return count
@@ -146,3 +153,13 @@ def _note_guid(language: Language, word: str) -> str:
 def _deck_id(deck_name: str) -> int:
     digest = hashlib.sha1(deck_name.encode("utf-8")).digest()
     return DECK_ID_DEFAULT ^ int.from_bytes(digest[:4], "big")
+
+
+def _new_temp_path(path: Path) -> Path:
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=path.suffix,
+    ) as temp_file:
+        return Path(temp_file.name)

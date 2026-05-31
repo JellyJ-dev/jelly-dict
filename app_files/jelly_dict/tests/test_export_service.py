@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from openpyxl import load_workbook
+
 from app.core.models import Example, MeaningGroup, Sense, SubSense, VocabularyEntry
 from app.services.export_service import ExportService, entry_from_export_row
 from app.storage.cache_store import CacheStore
 from app.storage.excel_writer import append_entry
+from app.storage.excel_serializer import SHEET_NAME
 from app.storage.settings_store import EXCEL_COLUMN_KEYS_DEFAULT, Settings
 
 
@@ -112,6 +115,14 @@ def test_export_row_keeps_excel_examples_ahead_of_cache_examples() -> None:
     assert nested_examples[0].translation_ko == "새 예문"
 
 
+def test_export_row_preserves_blank_translation_lines() -> None:
+    entry = entry_from_export_row(
+        _row(examples="first\nsecond", example_translations="\n두 번째"),
+    )
+
+    assert [ex.translation_ko for ex in entry.examples_flat] == ["", "두 번째"]
+
+
 def test_collect_entries_filters_requested_language(tmp_path) -> None:
     workbook = tmp_path / "vocab.xlsx"
     append_entry(
@@ -130,3 +141,29 @@ def test_collect_entries_filters_requested_language(tmp_path) -> None:
     entries = service._collect_entries("en")
 
     assert [(entry.language, entry.word) for entry in entries] == [("en", "apple")]
+
+
+def test_collect_entries_skips_blank_language_rows(tmp_path) -> None:
+    workbook = tmp_path / "vocab.xlsx"
+    append_entry(
+        workbook,
+        VocabularyEntry(language="en", word="orphan"),
+        EXCEL_COLUMN_KEYS_DEFAULT,
+    )
+    append_entry(
+        workbook,
+        VocabularyEntry(language="en", word="apple"),
+        EXCEL_COLUMN_KEYS_DEFAULT,
+    )
+    wb = load_workbook(workbook)
+    try:
+        wb[SHEET_NAME]["A2"] = ""
+        wb.save(workbook)
+    finally:
+        wb.close()
+    settings = Settings(excel_path_en=str(workbook))
+    service = ExportService(settings, CacheStore(tmp_path / "cache.db"))
+
+    entries = service._collect_entries("en")
+
+    assert [entry.word for entry in entries] == ["apple"]

@@ -102,6 +102,19 @@ def test_wordbook_filter_empty_state_preserves_export(qtbot):
     assert not view.wordbook_delete_btn.isEnabled()
 
 
+def test_switching_from_recent_to_wordbook_resets_search_context(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_recent([("apple", "en", "사과", "recent")])
+    view.wordbook_search.setText("banana")
+
+    view.set_wordbook("en", [("apple", "en", "", "사과")])
+
+    assert view.wordbook_search.placeholderText() == "단어 / 뜻 검색..."
+    assert view.wordbook_search.text() == ""
+    assert view.recent_list.count() == 1
+
+
 def test_lookup_queue_status_labels_avoid_emoji_glyph_dependency(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
@@ -143,3 +156,15 @@ def test_bulk_input_submission_uses_bulk_signal(qtbot):
     view._submit()
 
     assert seen == [(["apple", "banana"], "")]
+
+
+def test_trailing_bulk_separator_submits_clean_single_word(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    seen = []
+    view.submitted.connect(lambda word, lang: seen.append((word, lang)))
+
+    view.input.setText("apple,")
+    view._submit()
+
+    assert seen == [("apple", "")]
