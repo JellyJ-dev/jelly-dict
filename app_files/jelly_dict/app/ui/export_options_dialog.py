@@ -121,6 +121,9 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         buttons = QtWidgets.QDialogButtonBox()
         export_btn = buttons.addButton("내보내기", QtWidgets.QDialogButtonBox.AcceptRole)
         export_btn.setObjectName("settingsPrimaryButton")
+        if self._preflight.blockers:
+            export_btn.setEnabled(False)
+            export_btn.setToolTip("진행 불가 항목을 해결한 뒤 내보낼 수 있습니다.")
         cancel_btn = buttons.addButton("취소", QtWidgets.QDialogButtonBox.RejectRole)
         cancel_btn.setObjectName("settingsSecondaryButton")
         detail_btn = buttons.addButton("상세 설정", QtWidgets.QDialogButtonBox.ActionRole)

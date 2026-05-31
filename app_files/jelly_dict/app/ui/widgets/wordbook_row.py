@@ -1,12 +1,36 @@
 """Compact row widget used inside the wordbook list.
 
 Extracted from `word_input_view.py` to keep that file focused on the
-input flow. The widget tree, object names, and styling are byte-for-byte
-identical to the original — no UI/UX change.
+input flow. Object names stay stable so the central QSS owns the visual
+language, while labels elide long content instead of overflowing.
 """
 from __future__ import annotations
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
+
+
+class _ElideLabel(QtWidgets.QLabel):
+    def __init__(self, text: str = "", parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__("", parent)
+        self._full_text = ""
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt API
+        self._full_text = text or ""
+        self.setToolTip(self._full_text)
+        super().setText(self._elided())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        super().setText(self._elided())
+
+    def _elided(self) -> str:
+        width = max(24, self.width())
+        return self.fontMetrics().elidedText(
+            self._full_text,
+            QtCore.Qt.ElideRight,
+            width,
+        )
 
 
 class WordbookRow(QtWidgets.QFrame):
@@ -29,29 +53,26 @@ class WordbookRow(QtWidgets.QFrame):
         top.setSpacing(8)
         layout.addLayout(top)
 
-        word_label = QtWidgets.QLabel(word)
+        word_label = _ElideLabel(word)
         word_label.setObjectName("wordbookWord")
-        word_label.setToolTip(word)
         word_label.setMinimumWidth(0)
         word_label.setSizePolicy(
-            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed
         )
-        top.addWidget(word_label, 0)
+        top.addWidget(word_label, 1)
 
         if language == "ja":
-            reading_label = QtWidgets.QLabel(reading if reading else "")
+            reading_label = _ElideLabel(reading if reading else "")
             reading_label.setObjectName("wordbookReading")
-            reading_label.setToolTip(reading)
             reading_label.setMinimumWidth(0)
             reading_label.setSizePolicy(
-                QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
+                QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed
             )
-            top.addWidget(reading_label, 0)
-        top.addStretch(1)
+            top.addWidget(reading_label, 1)
+        top.addStretch(0)
 
-        meaning_label = QtWidgets.QLabel(hint)
+        meaning_label = _ElideLabel(hint)
         meaning_label.setObjectName("wordbookMeaning")
-        meaning_label.setToolTip(hint)
         meaning_label.setMinimumWidth(0)
         meaning_label.setSizePolicy(
             QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed

@@ -4,9 +4,11 @@ from PySide6 import QtCore, QtWidgets
 
 from app.ui.word_input_view import (
     RECENT_EMPTY_TEXT,
+    RECENT_FILTER_EMPTY_TEXT,
     WORDBOOK_EMPTY_TEXT,
     WORDBOOK_FILTER_EMPTY_TEXT,
     WordInputView,
+    split_bulk_input,
 )
 
 
@@ -35,6 +37,39 @@ def test_recent_items_enable_clear_action(qtbot):
     assert view.recent_list.count() == 1
     assert view.recent_list.item(0).text() == "[en] apple  —  사과"
     assert _is_selectable(view.recent_list.item(0))
+    assert view.clear_recent_btn.isEnabled()
+    assert not view.wordbook_search.isHidden()
+
+
+def test_recent_search_filters_items_without_disabling_clear(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_recent([
+        ("apple", "en", "사과", "recent"),
+        ("banana", "en", "바나나", "recent"),
+    ])
+
+    view.wordbook_search.setText("banana")
+    view._search_debounce.stop()
+    view._render_current_list()
+
+    assert view.recent_list.count() == 1
+    assert view.recent_list.item(0).text() == "[en] banana  —  바나나"
+    assert view.clear_recent_btn.isEnabled()
+
+
+def test_recent_search_empty_state_keeps_clear_available(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_recent([("apple", "en", "사과", "recent")])
+
+    view.wordbook_search.setText("zzz")
+    view._search_debounce.stop()
+    view._render_current_list()
+
+    assert view.recent_list.count() == 1
+    assert view.recent_list.item(0).text() == RECENT_FILTER_EMPTY_TEXT
+    assert not _is_selectable(view.recent_list.item(0))
     assert view.clear_recent_btn.isEnabled()
 
 
@@ -85,3 +120,26 @@ def test_lookup_queue_status_labels_avoid_emoji_glyph_dependency(qtbot):
     assert "진행 · apple" in chips
     assert "banana" in chips
     assert "실패 · cherry" in chips
+
+
+def test_split_bulk_input_uses_explicit_separators_only():
+    assert split_bulk_input("apple, banana; cherry、月日") == [
+        "apple",
+        "banana",
+        "cherry",
+        "月日",
+    ]
+    assert split_bulk_input("ice cream") == ["ice cream"]
+    assert split_bulk_input("apple, Apple, banana") == ["apple", "banana"]
+
+
+def test_bulk_input_submission_uses_bulk_signal(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    seen = []
+    view.bulkSubmitted.connect(lambda words, lang: seen.append((words, lang)))
+
+    view.input.setText("apple, banana")
+    view._submit()
+
+    assert seen == [(["apple", "banana"], "")]

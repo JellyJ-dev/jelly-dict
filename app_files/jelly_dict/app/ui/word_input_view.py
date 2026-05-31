@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -13,12 +14,44 @@ WordbookItem = tuple[str, str, str, str]  # word, language, reading, meaning hin
 NORMAL_LIST_HEIGHT = 320
 RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resources"
 RECENT_EMPTY_TEXT = "최근 기록 없음"
+RECENT_FILTER_EMPTY_TEXT = "검색 결과 없음"
 WORDBOOK_EMPTY_TEXT = "저장된 단어 없음"
 WORDBOOK_FILTER_EMPTY_TEXT = "검색 결과 없음"
+BULK_INPUT_SPLIT_RE = re.compile(r"[\r\n,;，、]+")
 
 
 def _resource_icon(name: str) -> QtGui.QIcon:
     return QtGui.QIcon(str(RESOURCE_DIR / "icons" / name))
+
+
+class ElideLabel(QtWidgets.QLabel):
+    def __init__(
+        self,
+        text: str = "",
+        *,
+        mode: QtCore.Qt.TextElideMode = QtCore.Qt.ElideMiddle,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__("", parent)
+        self._full_text = ""
+        self._mode = mode
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt API
+        self._full_text = text or ""
+        self.setToolTip(self._full_text)
+        super().setText(self._elided())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        super().setText(self._elided())
+
+    def _elided(self) -> str:
+        return self.fontMetrics().elidedText(
+            self._full_text,
+            self._mode,
+            max(80, self.width()),
+        )
 
 
 class MenuTextButton(QtWidgets.QPushButton):
@@ -170,6 +203,7 @@ class WordInputView(QtWidgets.QWidget):
     """Command-center style word input with a compact recent list."""
 
     submitted = QtCore.Signal(str, str)  # word, forced_language ("" = auto)
+    bulkSubmitted = QtCore.Signal(object, str)  # list[str], forced_language
     jobCancelRequested = QtCore.Signal(str)  # job_id
     jobRetryRequested = QtCore.Signal(str)  # job_id
     bulkRetryFailedRequested = QtCore.Signal()
@@ -195,6 +229,7 @@ class WordInputView(QtWidgets.QWidget):
         super().__init__(parent)
         self._forced_language = ""
         self._list_mode = "recent"
+        self._recent_items: list[tuple[str, str, str, str]] = []
         self._wordbook_items: list[WordbookItem] = []
         self._wordbook_expanded = False
         self._lookup_busy = False
@@ -218,7 +253,7 @@ class WordInputView(QtWidgets.QWidget):
         self._search_debounce = QtCore.QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(120)
-        self._search_debounce.timeout.connect(self._render_wordbook)
+        self._search_debounce.timeout.connect(self._render_current_list)
         self.setAcceptDrops(True)
         self._build_ui()
 
@@ -493,13 +528,15 @@ class WordInputView(QtWidgets.QWidget):
         layout.addLayout(footer)
         footer.addStretch(1)
 
-        self.status_summary = QtWidgets.QLabel("")
+        self.status_summary = ElideLabel("")
         self.status_summary.setObjectName("statusSummary")
         self.status_summary.setAlignment(QtCore.Qt.AlignCenter)
         self.status_summary.setWordWrap(False)
+        self.status_summary.setMinimumWidth(360)
         self.status_summary.setSizePolicy(
-            QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
         )
+        self.status_summary.setMaximumWidth(720)
         footer.addWidget(self.status_summary)
 
         self.settings_btn = QtWidgets.QPushButton("설정")
@@ -531,6 +568,10 @@ class WordInputView(QtWidgets.QWidget):
     def _submit(self) -> None:
         word = self.input.text().strip()
         if not word:
+            return
+        bulk_words = split_bulk_input(word)
+        if len(bulk_words) > 1:
+            self.bulkSubmitted.emit(bulk_words, self._forced_language)
             return
         if len(self._ocr_selected_tokens) > 1:
             self.ocrBatchSubmitted.emit(list(self._ocr_selected_tokens), self._forced_language)
@@ -892,8 +933,10 @@ class WordInputView(QtWidgets.QWidget):
         """Each item is (word, language, hint, status). Hint is the first Korean
         meaning shown after an em-dash so the user can verify saves at a
         glance."""
-        display_items = items[:8]
+        previous_mode = self._list_mode
+        display_items = items[:20]
         self._list_mode = "recent"
+        self._recent_items = list(display_items)
         self._wordbook_items = []
         self._wordbook_expanded = False
         self.top_area.setVisible(True)
@@ -907,17 +950,49 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_export_btn.setEnabled(True)
         self.wordbook_delete_btn.setVisible(False)
         self.wordbook_delete_btn.setEnabled(False)
-        self.wordbook_search.setVisible(False)
         self._search_debounce.stop()
-        self.wordbook_search.clear()
+        if previous_mode != "recent":
+            self.wordbook_search.clear()
+        self.wordbook_search.setPlaceholderText("최근 단어 검색...")
+        self.wordbook_search.setVisible(bool(display_items))
         self.wordbook_search.setMaximumHeight(16777215)
         self.recent_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.recent_list.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         self.recent_list.setMinimumHeight(NORMAL_LIST_HEIGHT)
         self.recent_list.setMaximumHeight(16777215)
+        if not display_items:
+            self.recent_list.clear()
+            self._add_empty_list_item(RECENT_EMPTY_TEXT, NORMAL_LIST_HEIGHT)
+            return
+        self._render_recent()
+
+    def _render_current_list(self) -> None:
+        if self._list_mode == "recent":
+            self._render_recent()
+            return
+        self._render_wordbook()
+
+    def _render_recent(self) -> None:
+        if self._list_mode != "recent":
+            return
+        needle = self.wordbook_search.text().strip().lower()
+        if needle:
+            display_items = [
+                item
+                for item in self._recent_items
+                if needle in item[0].lower()
+                or needle in item[1].lower()
+                or needle in item[2].lower()
+            ]
+        else:
+            display_items = list(self._recent_items)
+
         self.recent_list.clear()
         if not display_items:
-            self._add_empty_list_item(RECENT_EMPTY_TEXT, NORMAL_LIST_HEIGHT)
+            self._add_empty_list_item(
+                RECENT_FILTER_EMPTY_TEXT if needle else RECENT_EMPTY_TEXT,
+                120 if needle else NORMAL_LIST_HEIGHT,
+            )
             return
         for word, language, hint, status in display_items:
             prefix = "✓ " if status == "saved" else ""
@@ -1270,6 +1345,22 @@ def _elide(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
+
+
+def split_bulk_input(text: str) -> list[str]:
+    """Split explicit separators while preserving phrases with spaces."""
+    pieces = [piece.strip() for piece in BULK_INPUT_SPLIT_RE.split(text or "")]
+    out: list[str] = []
+    seen: set[str] = set()
+    for piece in pieces:
+        if not piece:
+            continue
+        key = piece.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(piece)
+    return out
 
 
 class LoadingSpinner(QtWidgets.QWidget):

@@ -159,6 +159,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.input_view = WordInputView()
         self.input_view.submitted.connect(self._on_submit)
+        self.input_view.bulkSubmitted.connect(self._on_bulk_submit)
         self.input_view.jobCancelRequested.connect(self._on_job_cancel_requested)
         self.input_view.jobRetryRequested.connect(self._on_job_retry_requested)
         self.input_view.bulkRetryFailedRequested.connect(self._on_bulk_retry_failed_requested)
@@ -186,7 +187,7 @@ class MainWindow(QtWidgets.QMainWindow):
         input_scroll.setWidgetResizable(True)
         input_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         input_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        input_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        input_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         input_scroll.setWidget(self.input_view)
 
         self.preview_view = PreviewEditorView()
@@ -403,6 +404,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     _THEME_PATH = Path(__file__).resolve().parent / "resources" / "theme.qss"
+    _RESOURCE_ROOT = Path(__file__).resolve().parents[2] / "resources"
 
     def _apply_theme(self) -> None:
         try:
@@ -410,6 +412,10 @@ class MainWindow(QtWidgets.QMainWindow):
         except OSError as exc:
             log.warning("theme.qss read failed: %s", exc)
             return
+        qss = qss.replace(
+            "url(resources/",
+            f"url({self._RESOURCE_ROOT.as_posix()}/",
+        )
         self.setStyleSheet(qss)
 
 
@@ -475,20 +481,52 @@ class MainWindow(QtWidgets.QMainWindow):
         if not tokens:
             return
 
-        added_count = 0
-        for token in tokens:
-            if self._is_already_queued_or_active(token, forced_language):
-                continue
-            job = LookupJob(token, forced_language)
-            self._lookup_queue.append(job)
-            self._lookup_queue_total += 1
-            added_count += 1
-
+        added_count, _skipped_count = self._queue_lookup_tokens(tokens, forced_language)
         self.input_view.reset_input()
         self._refresh_lookup_queue_ui()
         if added_count > 0:
             if not self._is_lookup_active():
                 self._start_next_queued_lookup()
+
+    @QtCore.Slot(object, str)
+    def _on_bulk_submit(self, tokens_obj: object, forced_language: str) -> None:
+        tokens = [
+            token.strip()
+            for token in tokens_obj
+            if isinstance(token, str) and token.strip()
+        ] if isinstance(tokens_obj, list) else []
+        if not tokens:
+            return
+
+        added_count, skipped_count = self._queue_lookup_tokens(tokens, forced_language)
+        self.input_view.reset_input()
+        self._refresh_lookup_queue_ui()
+        if added_count > 0:
+            self.status.showMessage(
+                f"{added_count}개 단어를 대기열에 추가했습니다."
+                + (f" ({skipped_count}개 중복 제외)" if skipped_count else "")
+            )
+            if not self._is_lookup_active():
+                self._start_next_queued_lookup()
+            return
+        self.status.showMessage("추가할 새 단어가 없습니다.")
+
+    def _queue_lookup_tokens(
+        self,
+        tokens: list[str],
+        forced_language: str,
+    ) -> tuple[int, int]:
+        added_count = 0
+        skipped_count = 0
+        for token in tokens:
+            if self._is_already_queued_or_active(token, forced_language):
+                skipped_count += 1
+                continue
+            job = LookupJob(token, forced_language)
+            self._lookup_queue.append(job)
+            self._lookup_queue_total += 1
+            added_count += 1
+        return added_count, skipped_count
 
     @QtCore.Slot(list, str)
     def _on_ocr_bulk_submit(self, tokens: list[str], forced_language: str) -> None:
@@ -783,13 +821,28 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(str)
     def _on_ambiguous(self, word: str) -> None:
         self.input_view.set_lookup_busy(False)
-        choice = QtWidgets.QMessageBox.question(
-            self,
-            "언어 선택",
-            f"'{word}' — 영어와 일본어 문자가 섞여 있습니다.\n어느 사전을 사용할까요?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+        msg = QtWidgets.QMessageBox(self)
+        msg.setIcon(QtWidgets.QMessageBox.Question)
+        msg.setWindowTitle("언어 선택")
+        msg.setText(
+            f"'{word}' — 영어와 일본어 문자가 섞여 있습니다.\n"
+            "조회할 사전을 선택하세요."
         )
-        forced: Language = "en" if choice == QtWidgets.QMessageBox.Yes else "ja"
+        en_btn = msg.addButton("English", QtWidgets.QMessageBox.AcceptRole)
+        ja_btn = msg.addButton("日本語", QtWidgets.QMessageBox.AcceptRole)
+        cancel_btn = msg.addButton("취소", QtWidgets.QMessageBox.RejectRole)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked is cancel_btn:
+            if self._active_job is not None:
+                self._active_job.status = "failed"
+                self._lookup_queue.insert(0, self._active_job)
+                self._active_job = None
+            self.status.showMessage("언어 선택이 취소되었습니다.")
+            self._refresh_lookup_queue_ui()
+            self._schedule_next_queued_lookup()
+            return
+        forced: Language = "ja" if clicked is ja_btn else "en"
         self._start_lookup(word, forced)
 
     # ---------- toggles / settings --------------------------------

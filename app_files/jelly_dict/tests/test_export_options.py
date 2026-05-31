@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6 import QtWidgets
+
+from app.services.export_preflight import PreflightIssue, PreflightResult
 from app.services.export_preflight import run_export_preflight
 from app.storage.settings_store import Settings
 from app.ui.export_options import (
@@ -9,6 +12,7 @@ from app.ui.export_options import (
     build_export_plan,
     should_confirm_export,
 )
+from app.ui.export_options_dialog import ExportOptionsDialog
 
 
 def test_audio_policy_no_tts_and_remove_audio_disable_tts() -> None:
@@ -76,3 +80,26 @@ def test_preflight_blocks_missing_excel_file(tmp_path: Path) -> None:
     assert result.blockers
     assert any("Excel" in issue.message for issue in result.blockers)
     assert any("카드" in issue.message for issue in result.blockers)
+
+
+def test_export_dialog_disables_export_button_when_blocked(qtbot, tmp_path: Path) -> None:
+    plan = build_export_plan(
+        Settings(),
+        language="en",
+        deck_name="JellyDict::EN",
+        card_count=0,
+    )
+    dialog = ExportOptionsDialog(
+        plan=plan,
+        output_path=tmp_path / "out.apkg",
+        preflight=PreflightResult((PreflightIssue("block", "내보낼 카드가 없습니다."),)),
+    )
+    qtbot.addWidget(dialog)
+
+    export_btn = next(
+        button
+        for button in dialog.findChildren(QtWidgets.QPushButton)
+        if button.text() == "내보내기"
+    )
+
+    assert not export_btn.isEnabled()

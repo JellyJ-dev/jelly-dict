@@ -188,12 +188,12 @@ class WordListDialog(QtWidgets.QDialog):
         sync_note = ""
         if self._anki_sync and self._anki_sync.enabled:
             sync_note = (
-                "\n\n✅ AnkiConnect 동기화 ON — Anki 카드도 함께 삭제 시도합니다.\n"
+                "\n\nAnkiConnect 동기화 ON — Anki 카드도 함께 삭제 시도합니다.\n"
                 "(Anki 데스크톱이 켜져 있어야 합니다)"
             )
         else:
             sync_note = (
-                "\n\n⚠️ Anki 덱 카드는 자동 삭제되지 않습니다.\n"
+                "\n\nAnki 덱 카드는 자동 삭제되지 않습니다.\n"
                 "설정에서 AnkiConnect를 활성화하면 자동 삭제 가능합니다."
             )
         ok = QtWidgets.QMessageBox.warning(
@@ -259,14 +259,14 @@ class WordListDialog(QtWidgets.QDialog):
                 msg += "\n\n오류:\n" + "\n".join(errors[:5])
         else:
             msg += (
-                "\n\n⚠️ Anki에서도 같은 카드를 지우려면 직접 삭제하거나\n"
+                "\n\nAnki에서도 같은 카드를 지우려면 직접 삭제하거나\n"
                 "설정 → AnkiConnect를 활성화하세요."
             )
         QtWidgets.QMessageBox.information(self, "삭제 완료", msg)
 
     def _apply_theme(self) -> None:
-        self.setStyleSheet(
-            """
+        resource_root = (Path(__file__).resolve().parents[2] / "resources").as_posix()
+        qss = """
             QDialog {
                 background: #1b1b1a;
                 color: #e7e1d6;
@@ -368,7 +368,7 @@ class WordListDialog(QtWidgets.QDialog):
                 border-color: #333331;
             }
             """
-        )
+        self.setStyleSheet(qss.replace("url(resources/", f"url({resource_root}/"))
 
 
 def _is_visible_entry(entry: VocabularyEntry, language: str) -> bool:
