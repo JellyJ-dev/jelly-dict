@@ -128,7 +128,7 @@ class TTSPipeline:
 
 def _remove_partial_audio(path: Path) -> None:
     try:
-        if path.exists() and path.stat().st_size <= 0:
+        if path.exists() and not is_valid_audio_file(path):
             path.unlink()
     except OSError:
         pass

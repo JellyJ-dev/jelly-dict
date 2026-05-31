@@ -51,9 +51,43 @@ def has_cached(
 
 def is_valid_audio_file(path: Path) -> bool:
     try:
-        return path.exists() and path.stat().st_size > 0
+        if not path.exists() or path.stat().st_size < 16:
+            return False
+        with path.open("rb") as f:
+            header = f.read(4096)
     except OSError:
         return False
+    return _looks_like_mp3(header) or _looks_like_wav(header)
+
+
+def _looks_like_mp3(header: bytes) -> bool:
+    if len(header) >= 2 and header[0] == 0xFF and (header[1] & 0xE0) == 0xE0:
+        return True
+    if not header.startswith(b"ID3") or len(header) < 12:
+        return False
+    tag_size = _id3_synchsafe_size(header[6:10]) if len(header) >= 10 else None
+    search_start = 10 + (tag_size or 0)
+    window = header[search_start:] or header[10:]
+    return _contains_mp3_frame_sync(window)
+
+
+def _id3_synchsafe_size(raw: bytes) -> int | None:
+    if len(raw) != 4 or any(byte & 0x80 for byte in raw):
+        return None
+    return (raw[0] << 21) | (raw[1] << 14) | (raw[2] << 7) | raw[3]
+
+
+def _contains_mp3_frame_sync(data: bytes) -> bool:
+    for idx in range(max(0, len(data) - 1)):
+        if data[idx] == 0xFF and (data[idx + 1] & 0xE0) == 0xE0:
+            return True
+    return False
+
+
+def _looks_like_wav(header: bytes) -> bool:
+    if not (header.startswith(b"RIFF") and header[8:12] == b"WAVE"):
+        return False
+    return b"fmt " in header[12:] and b"data" in header[12:]
 
 
 def clear_cache() -> int:

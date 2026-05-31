@@ -8,6 +8,13 @@ import pytest
 from app.anki.tts import cache as tts_cache
 from app.anki.tts.base import NoTTSProvider, ProviderInfo, TTSResult
 
+FAKE_MP3 = b"ID3\x04\x00\x00\x00\x00\x00\x00\xff\xfb\x90\x64fake-mp3-payload"
+FAKE_WAV = (
+    b"RIFF$\x00\x00\x00WAVE"
+    b"fmt \x10\x00\x00\x00\x01\x00\x01\x00\x40\x1f\x00\x00\x80>\x00\x00\x02\x00\x10\x00"
+    b"data\x00\x00\x00\x00"
+)
+
 
 @dataclass
 class _Settings:
@@ -48,7 +55,7 @@ class _FakeProvider:
     def synthesize(self, text, *, language, voice, out_path):
         self.calls += 1
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(b"fake-mp3")
+        out_path.write_bytes(FAKE_MP3)
         return TTSResult(
             path=out_path,
             engine_id="fake",
@@ -152,7 +159,50 @@ def test_pipeline_regenerates_empty_cached_audio(isolated_runtime, monkeypatch):
     result = pipeline.synthesize("hello", "en")
 
     assert result == path
-    assert path.read_bytes() == b"fake-mp3"
+    assert path.read_bytes() == FAKE_MP3
+
+
+def test_pipeline_regenerates_corrupt_nonempty_cached_audio(isolated_runtime, monkeypatch):
+    _patch_registry(monkeypatch)
+    from app.anki.tts.pipeline import TTSPipeline
+
+    s = _Settings()
+    path = tts_cache.cache_path(
+        "en",
+        "fake",
+        "v_en",
+        "hello",
+        bitrate=s.tts_bitrate,
+        sample_rate=s.tts_sample_rate,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"partial-cache")
+
+    pipeline = TTSPipeline(s)
+    result = pipeline.synthesize("hello", "en")
+
+    assert result == path
+    assert path.read_bytes() == FAKE_MP3
+
+
+def test_audio_cache_rejects_header_only_mp3_and_wav(isolated_runtime):
+    mp3 = isolated_runtime / "header-only.mp3"
+    wav = isolated_runtime / "header-only-wav.mp3"
+    mp3.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x0fpadding-only")
+    wav.write_bytes(b"RIFF\x04\x00\x00\x00WAVE")
+
+    assert not tts_cache.is_valid_audio_file(mp3)
+    assert not tts_cache.is_valid_audio_file(wav)
+
+
+def test_audio_cache_accepts_mp3_frame_sync_and_wav_fallback(isolated_runtime):
+    mp3 = isolated_runtime / "valid.mp3"
+    wav = isolated_runtime / "fallback.mp3"
+    mp3.write_bytes(FAKE_MP3)
+    wav.write_bytes(FAKE_WAV)
+
+    assert tts_cache.is_valid_audio_file(mp3)
+    assert tts_cache.is_valid_audio_file(wav)
 
 
 def test_pipeline_removes_empty_audio_after_provider_failure(
