@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 from PySide6 import QtCore, QtWidgets
 
 from app.core.models import VocabularyEntry, build_meanings_summary, collect_examples_flat
@@ -89,6 +91,9 @@ class EntryDetailDialog(QtWidgets.QDialog):
         self._add_examples(body_layout)
         self._add_word_list(body_layout, "동의어", self._entry.synonyms)
         self._add_word_list(body_layout, "반의어", self._entry.antonyms)
+        self._add_word_list(body_layout, "태그", self._entry.tags)
+        self._add_text_block(body_layout, "메모", self._entry.memo)
+        self._add_source(body_layout)
         body_layout.addStretch(1)
 
     def _add_meanings(self, layout: QtWidgets.QVBoxLayout) -> None:
@@ -126,7 +131,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
         label = QtWidgets.QLabel("예문")
         label.setObjectName("entryDetailSection")
         layout.addWidget(label)
-        for ex in examples[:5]:
+        for ex in examples:
             text = ex.source_text_plain or ex.source_text
             if ex.translation_ko:
                 text += f"\n{ex.translation_ko}"
@@ -141,8 +146,41 @@ class EntryDetailDialog(QtWidgets.QDialog):
         label = QtWidgets.QLabel(title)
         label.setObjectName("entryDetailSection")
         layout.addWidget(label)
-        row = QtWidgets.QLabel(", ".join(words[:12]))
+        visible = words[:20]
+        text = ", ".join(visible)
+        if len(words) > len(visible):
+            text += f" · 외 {len(words) - len(visible)}개"
+        row = QtWidgets.QLabel(text)
         row.setObjectName("entryDetailSenseRow")
+        row.setWordWrap(True)
+        layout.addWidget(row)
+
+    def _add_text_block(self, layout: QtWidgets.QVBoxLayout, title: str, text: str) -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+        label = QtWidgets.QLabel(title)
+        label.setObjectName("entryDetailSection")
+        layout.addWidget(label)
+        row = QtWidgets.QLabel(text)
+        row.setObjectName("entryDetailSenseRow")
+        row.setWordWrap(True)
+        layout.addWidget(row)
+
+    def _add_source(self, layout: QtWidgets.QVBoxLayout) -> None:
+        url = (self._entry.source_url or "").strip()
+        if not url:
+            return
+        label = QtWidgets.QLabel("출처")
+        label.setObjectName("entryDetailSection")
+        layout.addWidget(label)
+        row = QtWidgets.QLabel(
+            f'<a style="color:#b55235; text-decoration:none;" href="{escape(url)}">'
+            f"{escape(url)}</a>"
+        )
+        row.setObjectName("entryDetailSenseRow")
+        row.setOpenExternalLinks(True)
+        row.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         row.setWordWrap(True)
         layout.addWidget(row)
 
