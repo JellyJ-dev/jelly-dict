@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.word_input_view import (
     RECENT_EMPTY_TEXT,
@@ -16,6 +16,13 @@ from app.ui.widgets.wordbook_row import WordbookRow
 
 def _is_selectable(item) -> bool:
     return bool(item.flags() & QtCore.Qt.ItemIsSelectable)
+
+
+def _key_event(
+    key: QtCore.Qt.Key,
+    modifiers: QtCore.Qt.KeyboardModifier = QtCore.Qt.KeyboardModifier.NoModifier,
+) -> QtGui.QKeyEvent:
+    return QtGui.QKeyEvent(QtCore.QEvent.KeyPress, key, modifiers)
 
 
 def test_recent_empty_state_disables_clear_action(qtbot):
@@ -281,6 +288,75 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
 
     assert first_row.action_bar.isHidden()
     assert not second_row.action_bar.isHidden()
+
+
+def test_wordbook_keyboard_shortcuts_reuse_row_actions_without_header_growth(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    requery_seen = []
+    delete_seen = []
+    view.wordbookRequeryRequested.connect(
+        lambda words, lang: requery_seen.append((words, lang))
+    )
+    view.wordbookDeleteRequested.connect(
+        lambda lang, words: delete_seen.append((lang, words))
+    )
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+    first_item = view.recent_list.item(0)
+    view.recent_list.setCurrentItem(first_item)
+    first_item.setSelected(True)
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_C, QtCore.Qt.KeyboardModifier.ControlModifier)
+    )
+    assert view.status_summary.text() == "선택한 단어 1개 복사됨"
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_R, QtCore.Qt.KeyboardModifier.ControlModifier)
+    )
+    assert requery_seen == [(["apple"], "en")]
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_R, QtCore.Qt.KeyboardModifier.MetaModifier)
+    )
+    assert requery_seen == [(["apple"], "en"), (["apple"], "en")]
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_Delete),
+    )
+    assert delete_seen == [("en", ["apple"])]
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_A, QtCore.Qt.KeyboardModifier.ControlModifier)
+    )
+    assert view.wordbook_stats.text() == "2/2개 · 선택 2개"
+    assert view.wordbook_requery_btn.isHidden()
+    assert view.wordbook_copy_btn.isHidden()
+    assert view.wordbook_delete_btn.isHidden()
+
+
+def test_wordbook_keyboard_shortcuts_do_not_intercept_recent_list(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_recent([("apple", "en", "사과", "recent")])
+    status_before = view.status_summary.text()
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_C, QtCore.Qt.KeyboardModifier.ControlModifier)
+    )
+    assert view.status_summary.text() == status_before
 
 
 def test_wordbook_selection_keeps_row_size_and_header_actions_stable(qtbot):

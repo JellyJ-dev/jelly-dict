@@ -553,6 +553,7 @@ class WordInputView(QtWidgets.QWidget):
         self.recent_list.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
         )
+        self.recent_list.installEventFilter(self)
         recent_layout.addWidget(self.recent_list, 1)
 
         footer = QtWidgets.QHBoxLayout()
@@ -1517,7 +1518,40 @@ class WordInputView(QtWidgets.QWidget):
                 QtGui.QKeySequence.Paste
             ):
                 return self._paste_clipboard_image_if_available()
+        if (
+            watched is getattr(self, "recent_list", None)
+            and event.type() == QtCore.QEvent.KeyPress
+        ):
+            if isinstance(event, QtGui.QKeyEvent):
+                return self._handle_wordbook_list_key_press(event)
         return super().eventFilter(watched, event)
+
+    def _handle_wordbook_list_key_press(self, event: QtGui.QKeyEvent) -> bool:
+        if self._list_mode not in ("en", "ja"):
+            return False
+        if event.matches(QtGui.QKeySequence.Copy):
+            if self._selected_wordbook_words():
+                self._copy_selected_wordbook_items()
+                return True
+            return False
+        if event.matches(QtGui.QKeySequence.SelectAll):
+            self._select_visible_wordbook_items()
+            return True
+        if event.key() in (QtCore.Qt.Key_Delete, QtCore.Qt.Key_Backspace):
+            if self._selected_wordbook_words():
+                self._request_wordbook_delete()
+                return True
+            return False
+        shortcut_modifier = (
+            QtCore.Qt.KeyboardModifier.ControlModifier
+            | QtCore.Qt.KeyboardModifier.MetaModifier
+        )
+        if event.key() == QtCore.Qt.Key_R and event.modifiers() & shortcut_modifier:
+            if self._selected_wordbook_words():
+                self._requery_selected_wordbook_items()
+                return True
+            return False
+        return False
 
     def _paste_clipboard_image_if_available(self) -> bool:
         clipboard = QtGui.QGuiApplication.clipboard()
