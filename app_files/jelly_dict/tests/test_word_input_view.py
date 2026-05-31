@@ -10,6 +10,7 @@ from app.ui.word_input_view import (
     WordInputView,
     split_bulk_input,
 )
+from app.ui.widgets.wordbook_row import WordbookRow
 
 
 def _is_selectable(item) -> bool:
@@ -102,11 +103,17 @@ def test_wordbook_filter_empty_state_preserves_export(qtbot):
     assert not view.wordbook_delete_btn.isEnabled()
 
 
-def test_wordbook_toolbar_select_copy_and_requery_actions(qtbot):
+def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
-    seen = []
-    view.wordbookRequeryRequested.connect(lambda words, lang: seen.append((words, lang)))
+    requery_seen = []
+    delete_seen = []
+    view.wordbookRequeryRequested.connect(
+        lambda words, lang: requery_seen.append((words, lang))
+    )
+    view.wordbookDeleteRequested.connect(
+        lambda lang, words: delete_seen.append((lang, words))
+    )
     view.set_wordbook(
         "en",
         [
@@ -119,22 +126,86 @@ def test_wordbook_toolbar_select_copy_and_requery_actions(qtbot):
     assert view.wordbook_requery_btn.isHidden()
     assert view.wordbook_copy_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
+    first_item = view.recent_list.item(0)
+    first_row = view.recent_list.itemWidget(first_item)
+    assert isinstance(first_row, WordbookRow)
+    assert first_row.action_bar.isHidden()
+
+    view.recent_list.setCurrentItem(first_item)
+    first_item.setSelected(True)
+
+    assert view.wordbook_stats.text() == "2/2개 · 선택 1개"
+    assert not view.wordbook_select_visible_btn.isHidden()
+    assert view.wordbook_requery_btn.isHidden()
+    assert view.wordbook_copy_btn.isHidden()
+    assert view.wordbook_delete_btn.isHidden()
+    assert not view.wordbook_requery_btn.isEnabled()
+    assert not view.wordbook_copy_btn.isEnabled()
+    assert not first_row.action_bar.isHidden()
+
+    first_row.requery_button.click()
+    assert requery_seen == [(["apple"], "en")]
+
+    first_row.copy_button.click()
+    assert view.status_summary.text() == "선택한 단어 1개 복사됨"
 
     view.wordbook_select_visible_btn.click()
+    second_item = view.recent_list.item(1)
+    second_row = view.recent_list.itemWidget(second_item)
+    assert isinstance(second_row, WordbookRow)
 
     assert view.wordbook_stats.text() == "2/2개 · 선택 2개"
-    assert view.wordbook_select_visible_btn.isHidden()
-    assert not view.wordbook_requery_btn.isHidden()
-    assert not view.wordbook_copy_btn.isHidden()
-    assert not view.wordbook_delete_btn.isHidden()
-    assert view.wordbook_requery_btn.isEnabled()
-    assert view.wordbook_copy_btn.isEnabled()
+    assert view.wordbook_requery_btn.isHidden()
+    assert view.wordbook_copy_btn.isHidden()
+    assert view.wordbook_delete_btn.isHidden()
+    assert not first_row.action_bar.isHidden()
+    assert second_row.action_bar.isHidden()
 
-    view.wordbook_requery_btn.click()
-    assert seen == [(["apple", "banana"], "en")]
+    first_row.requery_button.click()
+    assert requery_seen[-1] == (["apple", "banana"], "en")
 
-    view.wordbook_copy_btn.click()
-    assert view.status_summary.text() == "선택한 단어 2개 복사됨"
+    first_row.delete_button.click()
+    assert delete_seen == [("en", ["apple", "banana"])]
+
+    view.recent_list.setCurrentItem(second_item)
+
+    assert first_row.action_bar.isHidden()
+    assert not second_row.action_bar.isHidden()
+
+
+def test_wordbook_selection_keeps_row_size_and_header_actions_stable(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook(
+        "ja",
+        [
+            ("粗製乱造", "ja", "そせいらんぞう", "조제 남조"),
+            ("月日", "ja", "つきひ", "세월"),
+        ],
+    )
+
+    item = view.recent_list.item(0)
+    initial_size = item.sizeHint()
+
+    view.recent_list.setCurrentItem(item)
+    item.setSelected(True)
+
+    assert item.sizeHint() == initial_size
+    assert item.sizeHint().height() == 62
+    assert view.wordbook_requery_btn.isHidden()
+    assert view.wordbook_copy_btn.isHidden()
+    assert view.wordbook_delete_btn.isHidden()
+
+
+def test_wordbook_row_actions_align_to_card_edge_when_visible(qtbot):
+    row = WordbookRow("en", "characteristically", "", "특징적으로")
+    qtbot.addWidget(row)
+    row.resize(1126, 46)
+    row.set_actions_visible(True)
+    row._place_action_bar()
+
+    assert not row.action_bar.isHidden()
+    assert row.action_bar.geometry().right() >= row.width() - 20
 
 
 def test_wordbook_expand_switches_to_real_wide_panel_mode(qtbot):

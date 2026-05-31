@@ -615,7 +615,7 @@ QFrame#recentPanel {
 }
 QFrame#recentPanel[expanded="true"] {
     min-width: 720px;
-    max-width: 16777215px;
+    max-width: 10000px;
 }
 QLabel#wordbookStats {
     color: #8f8980;
@@ -749,18 +749,48 @@ QFrame#wordbookRow {
 }
 QLabel#wordbookWord {
     color: #e7e1d6;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 800;
 }
 QLabel#wordbookReading {
     color: #aaa59c;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
 }
 QLabel#wordbookMeaning {
     color: #c8c1b7;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
+}
+QFrame#wordbookRowActions {
+    background: transparent;
+    border: none;
+}
+QPushButton#wordbookRowActionButton,
+QPushButton#wordbookRowDeleteButton {
+    background: #282826;
+    border: 1px solid #3f3f3c;
+    border-radius: 9px;
+    color: #d4cec4;
+    padding: 0 8px;
+    min-height: 26px;
+    max-height: 26px;
+    font-size: 12px;
+    font-weight: 800;
+    text-align: center;
+}
+QPushButton#wordbookRowActionButton:hover {
+    background: #30302d;
+    border-color: #6a6963;
+    color: #e7e1d6;
+}
+QPushButton#wordbookRowDeleteButton {
+    color: #e8744f;
+}
+QPushButton#wordbookRowDeleteButton:hover {
+    background: #3a2423;
+    border-color: #7a3e38;
+    color: #ff8b6b;
 }
 QPlainTextEdit#logView {
     background: #1f1f1e;

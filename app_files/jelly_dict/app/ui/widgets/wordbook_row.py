@@ -34,6 +34,10 @@ class _ElideLabel(QtWidgets.QLabel):
 
 
 class WordbookRow(QtWidgets.QFrame):
+    requeryRequested = QtCore.Signal(str)
+    copyRequested = QtCore.Signal(str)
+    deleteRequested = QtCore.Signal(str)
+
     def __init__(
         self,
         language: str,
@@ -43,14 +47,15 @@ class WordbookRow(QtWidgets.QFrame):
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self._word = word
         self.setObjectName("wordbookRow")
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)
-        layout.setSpacing(2)
+        layout.setContentsMargins(12, 7, 12, 7)
+        layout.setSpacing(3)
 
         top = QtWidgets.QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
-        top.setSpacing(7)
+        top.setSpacing(8)
         layout.addLayout(top)
 
         word_label = _ElideLabel(word)
@@ -73,6 +78,26 @@ class WordbookRow(QtWidgets.QFrame):
             top.addWidget(reading_label, 0)
         top.addStretch(1)
 
+        self.action_bar = QtWidgets.QFrame(self)
+        self.action_bar.setObjectName("wordbookRowActions")
+        self.action_bar.setFixedSize(148, 28)
+        self.action_bar.setSizePolicy(
+            QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed
+        )
+        action_layout = QtWidgets.QHBoxLayout(self.action_bar)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(5)
+        self.requery_button = self._action_button("재조회", "wordbookRowActionButton")
+        self.copy_button = self._action_button("복사", "wordbookRowActionButton")
+        self.delete_button = self._action_button("삭제", "wordbookRowDeleteButton")
+        self.requery_button.clicked.connect(lambda: self.requeryRequested.emit(self._word))
+        self.copy_button.clicked.connect(lambda: self.copyRequested.emit(self._word))
+        self.delete_button.clicked.connect(lambda: self.deleteRequested.emit(self._word))
+        action_layout.addWidget(self.requery_button)
+        action_layout.addWidget(self.copy_button)
+        action_layout.addWidget(self.delete_button)
+        self.action_bar.setVisible(False)
+
         meaning_label = _ElideLabel(hint)
         meaning_label.setObjectName("wordbookMeaning")
         meaning_label.setMinimumWidth(0)
@@ -80,6 +105,39 @@ class WordbookRow(QtWidgets.QFrame):
             QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed
         )
         layout.addWidget(meaning_label)
+
+    def set_actions_visible(self, visible: bool, selected_count: int = 1) -> None:
+        self.action_bar.setVisible(visible)
+        if visible:
+            self._place_action_bar()
+            QtCore.QTimer.singleShot(0, self._place_action_bar)
+            self.action_bar.raise_()
+        count_text = f"선택 {selected_count}개" if selected_count > 1 else self._word
+        self.requery_button.setToolTip(f"{count_text} 다시 조회")
+        self.copy_button.setToolTip(f"{count_text} 복사")
+        self.delete_button.setToolTip(f"{count_text} 삭제")
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_action_bar()
+
+    def paintEvent(self, event) -> None:
+        if self.action_bar.isVisible():
+            self._place_action_bar()
+        super().paintEvent(event)
+
+    def _action_button(self, text: str, object_name: str) -> QtWidgets.QPushButton:
+        button = QtWidgets.QPushButton(text, self.action_bar)
+        button.setObjectName(object_name)
+        button.setCursor(QtCore.Qt.PointingHandCursor)
+        button.setFixedSize(54 if len(text) > 2 else 42, 26)
+        return button
+
+    def _place_action_bar(self) -> None:
+        self.action_bar.move(
+            max(12, self.width() - self.action_bar.width() - 12),
+            7,
+        )
 
 
 def wordbook_tooltip(language: str, word: str, reading: str, hint: str) -> str:

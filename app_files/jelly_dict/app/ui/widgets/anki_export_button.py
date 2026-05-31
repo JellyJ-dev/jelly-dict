@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from pathlib import Path
+
+from PySide6 import QtCore, QtGui, QtWidgets
+
+
+RESOURCE_DIR = Path(__file__).resolve().parents[3] / "resources"
 
 
 class _ExportPopup(QtWidgets.QFrame):
@@ -98,6 +103,10 @@ class AnkiExportButton(QtWidgets.QWidget):
         super().__init__(parent)
         self._language = "en"
         self._status_text = ""
+        self._normal_icon = QtGui.QIcon(str(RESOURCE_DIR / "icons" / "anki_mark.svg"))
+        self._active_icon = QtGui.QIcon(
+            str(RESOURCE_DIR / "icons" / "anki_mark_active.svg")
+        )
         self.setObjectName("wordbookExportShell")
         self.setProperty("active", False)
         self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
@@ -110,6 +119,9 @@ class AnkiExportButton(QtWidgets.QWidget):
         self.main_button = QtWidgets.QPushButton("Anki 내보내기", self)
         self.main_button.setObjectName("wordbookExportButton")
         self.main_button.setCursor(QtCore.Qt.PointingHandCursor)
+        self.main_button.setIcon(self._normal_icon)
+        self.main_button.setIconSize(QtCore.QSize(18, 18))
+        self.main_button.installEventFilter(self)
         self.main_button.setFixedSize(134, 34)
         self.option_button = QtWidgets.QPushButton("...", self)
         self.option_button.setObjectName("wordbookExportOptionButton")
@@ -158,6 +170,18 @@ class AnkiExportButton(QtWidgets.QWidget):
 
     def _set_active(self, active: bool) -> None:
         self.setProperty("active", active)
+        self._sync_main_icon(active or self.main_button.underMouse())
         self.style().unpolish(self)
         self.style().polish(self)
         self.update()
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if watched is self.main_button:
+            if event.type() == QtCore.QEvent.Enter:
+                self._sync_main_icon(True)
+            elif event.type() == QtCore.QEvent.Leave:
+                self._sync_main_icon(bool(self.property("active")))
+        return super().eventFilter(watched, event)
+
+    def _sync_main_icon(self, active: bool) -> None:
+        self.main_button.setIcon(self._active_icon if active else self._normal_icon)

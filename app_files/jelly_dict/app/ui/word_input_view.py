@@ -509,26 +509,23 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_select_visible_btn.setToolTip("현재 검색 결과의 단어를 모두 선택")
         self.wordbook_select_visible_btn.setVisible(False)
         recent_header.addWidget(self.wordbook_select_visible_btn)
-        self.wordbook_requery_btn = QtWidgets.QPushButton("선택 재조회")
+        self.wordbook_requery_btn = QtWidgets.QPushButton("선택 재조회", self.recent_panel)
         self.wordbook_requery_btn.setObjectName("wordbookActionButton")
         self.wordbook_requery_btn.setToolTip("선택한 단어를 다시 조회해 뜻과 예문을 보강")
         self.wordbook_requery_btn.setVisible(False)
         self.wordbook_requery_btn.setEnabled(False)
-        recent_header.addWidget(self.wordbook_requery_btn)
-        self.wordbook_copy_btn = QtWidgets.QPushButton("선택 복사")
+        self.wordbook_copy_btn = QtWidgets.QPushButton("선택 복사", self.recent_panel)
         self.wordbook_copy_btn.setObjectName("wordbookActionButton")
         self.wordbook_copy_btn.setToolTip("선택한 단어를 클립보드에 복사")
         self.wordbook_copy_btn.setVisible(False)
         self.wordbook_copy_btn.setEnabled(False)
-        recent_header.addWidget(self.wordbook_copy_btn)
         self.wordbook_export_btn = AnkiExportButton()
         self.wordbook_export_btn.setVisible(False)
         recent_header.addWidget(self.wordbook_export_btn)
-        self.wordbook_delete_btn = QtWidgets.QPushButton("선택 삭제")
+        self.wordbook_delete_btn = QtWidgets.QPushButton("선택 삭제", self.recent_panel)
         self.wordbook_delete_btn.setObjectName("wordbookDeleteButton")
         self.wordbook_delete_btn.setVisible(False)
         self.wordbook_delete_btn.setEnabled(False)
-        recent_header.addWidget(self.wordbook_delete_btn)
 
         self.wordbook_search = QtWidgets.QLineEdit()
         self.wordbook_search.setObjectName("wordbookSearch")
@@ -581,6 +578,9 @@ class WordInputView(QtWidgets.QWidget):
         self.ocr_clear_btn.clicked.connect(self.clear_ocr_image)
         self.recent_list.itemDoubleClicked.connect(self._open_recent_entry)
         self.recent_list.itemSelectionChanged.connect(self._on_list_selection_changed)
+        self.recent_list.currentItemChanged.connect(
+            lambda _current, _previous: self._on_list_selection_changed()
+        )
         self.clear_recent_btn.clicked.connect(self.clearRecentRequested.emit)
         self.wordbook_export_btn.exportRequested.connect(self.wordbookExportRequested.emit)
         self.wordbook_export_btn.settingsRequested.connect(self.openSettingsRequested.emit)
@@ -1167,7 +1167,8 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_export_btn.setVisible(True)
         self.wordbook_export_btn.setEnabled(bool(items))
         self.wordbook_export_btn.set_language(language)
-        self.wordbook_delete_btn.setVisible(True)
+        self.wordbook_delete_btn.setVisible(False)
+        self.wordbook_delete_btn.setEnabled(False)
         self._search_debounce.stop()
         self.wordbook_search.setPlaceholderText("단어 / 뜻 검색...")
         if previous_mode != language:
@@ -1217,9 +1218,10 @@ class WordInputView(QtWidgets.QWidget):
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
                 qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
-                qt_item.setSizeHint(QtCore.QSize(620, 54))
+                qt_item.setSizeHint(QtCore.QSize(620, 62))
                 self.recent_list.setItemWidget(
-                    qt_item, WordbookRow(item_language, word, reading, hint)
+                    qt_item,
+                    self._build_wordbook_row(item_language, word, reading, hint),
                 )
             # Append any extra rows.
             for i in range(current, target):
@@ -1228,10 +1230,11 @@ class WordInputView(QtWidgets.QWidget):
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (word, item_language))
                 qt_item.setToolTip(wordbook_tooltip(item_language, word, reading, hint))
-                qt_item.setSizeHint(QtCore.QSize(620, 54))
+                qt_item.setSizeHint(QtCore.QSize(620, 62))
                 self.recent_list.addItem(qt_item)
                 self.recent_list.setItemWidget(
-                    qt_item, WordbookRow(item_language, word, reading, hint)
+                    qt_item,
+                    self._build_wordbook_row(item_language, word, reading, hint),
                 )
             # Drop trailing rows from the previous render.
             while self.recent_list.count() > target:
@@ -1239,6 +1242,19 @@ class WordInputView(QtWidgets.QWidget):
         finally:
             self.recent_list.setUpdatesEnabled(True)
         self._on_list_selection_changed()
+
+    def _build_wordbook_row(
+        self,
+        language: str,
+        word: str,
+        reading: str,
+        hint: str,
+    ) -> WordbookRow:
+        row = WordbookRow(language, word, reading, hint)
+        row.requeryRequested.connect(self._requery_wordbook_from_row)
+        row.copyRequested.connect(self._copy_wordbook_from_row)
+        row.deleteRequested.connect(self._delete_wordbook_from_row)
+        return row
 
     def _filtered_wordbook_items(self, needle: str) -> list[WordbookItem]:
         if not needle:
@@ -1277,7 +1293,7 @@ class WordInputView(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Expanding,
         )
         self.recent_panel.setMinimumWidth(720 if expanded else 860)
-        self.recent_panel.setMaximumWidth(16777215 if expanded else 980)
+        self.recent_panel.setMaximumWidth(10000 if expanded else 980)
         self._root_layout.setAlignment(
             self.recent_panel,
             QtCore.Qt.Alignment() if expanded else QtCore.Qt.AlignHCenter,
@@ -1345,17 +1361,27 @@ class WordInputView(QtWidgets.QWidget):
         if selected_count:
             stats += f" · 선택 {selected_count}개"
         self.wordbook_stats.setText(stats)
-        self.wordbook_select_visible_btn.setVisible(visible_count > 0 and selected_count == 0)
+        self.wordbook_select_visible_btn.setVisible(visible_count > 0)
         self.wordbook_select_visible_btn.setEnabled(visible_count > 0)
-        self.wordbook_requery_btn.setVisible(selected_count > 0)
-        self.wordbook_copy_btn.setVisible(selected_count > 0)
-        self.wordbook_delete_btn.setVisible(selected_count > 0)
-        self.wordbook_requery_btn.setEnabled(selected_count > 0)
-        self.wordbook_copy_btn.setEnabled(selected_count > 0)
-        self.wordbook_delete_btn.setEnabled(selected_count > 0)
-        self.wordbook_delete_btn.setText(
-            f"선택 삭제 ({selected_count})" if selected_count else "선택 삭제"
-        )
+        self.wordbook_requery_btn.setVisible(False)
+        self.wordbook_copy_btn.setVisible(False)
+        self.wordbook_delete_btn.setVisible(False)
+        self.wordbook_requery_btn.setEnabled(False)
+        self.wordbook_copy_btn.setEnabled(False)
+        self.wordbook_delete_btn.setEnabled(False)
+        self.wordbook_delete_btn.setText("선택 삭제")
+        self._sync_wordbook_row_actions(selected_count)
+
+    def _sync_wordbook_row_actions(self, selected_count: int) -> None:
+        current_item = self.recent_list.currentItem()
+        for index in range(self.recent_list.count()):
+            item = self.recent_list.item(index)
+            row = self.recent_list.itemWidget(item)
+            if isinstance(row, WordbookRow):
+                row.set_actions_visible(
+                    item is current_item and item.isSelected(),
+                    max(1, selected_count),
+                )
 
     def _visible_wordbook_count(self) -> int:
         count = 0
@@ -1380,11 +1406,44 @@ class WordInputView(QtWidgets.QWidget):
         if self._list_mode not in ("en", "ja"):
             return
         self.recent_list.clearSelection()
+        first_selectable: QtWidgets.QListWidgetItem | None = None
+        for index in range(self.recent_list.count()):
+            item = self.recent_list.item(index)
+            if item.flags() & QtCore.Qt.ItemIsSelectable:
+                if first_selectable is None:
+                    first_selectable = item
+        if first_selectable is not None:
+            self.recent_list.setCurrentItem(first_selectable)
         for index in range(self.recent_list.count()):
             item = self.recent_list.item(index)
             if item.flags() & QtCore.Qt.ItemIsSelectable:
                 item.setSelected(True)
         self._update_wordbook_toolbar_state()
+
+    def _wordbook_words_for_row_action(self, word: str) -> list[str]:
+        if self._list_mode not in ("en", "ja"):
+            return []
+        selected = self._selected_wordbook_words()
+        if word in selected:
+            return selected
+        return [word] if word.strip() else []
+
+    def _requery_wordbook_from_row(self, word: str) -> None:
+        words = self._wordbook_words_for_row_action(word)
+        if words:
+            self.wordbookRequeryRequested.emit(words, self._list_mode)
+
+    def _copy_wordbook_from_row(self, word: str) -> None:
+        words = self._wordbook_words_for_row_action(word)
+        if not words:
+            return
+        QtWidgets.QApplication.clipboard().setText("\n".join(words))
+        self.status_summary.setText(f"선택한 단어 {len(words)}개 복사됨")
+
+    def _delete_wordbook_from_row(self, word: str) -> None:
+        words = self._wordbook_words_for_row_action(word)
+        if words:
+            self.wordbookDeleteRequested.emit(self._list_mode, words)
 
     def _requery_selected_wordbook_items(self) -> None:
         if self._list_mode not in ("en", "ja"):
