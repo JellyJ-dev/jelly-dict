@@ -667,8 +667,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self._status_worker = None
 
     def _save(self) -> None:
-        if self._is_network_test_running():
-            self._set_busy_test_message()
+        if not self._ready_for_close_or_save():
             return
         en_engine = self.tts_engine_en_combo.currentData() or "none"
         ja_engine = self.tts_engine_ja_combo.currentData() or "none"
@@ -817,6 +816,43 @@ class SettingsDialog(QtWidgets.QDialog):
         self.ankiconnect_status.setText("진행 중인 테스트가 끝난 뒤 다시 시도하세요.")
         self.gv_key_status.setText("진행 중인 테스트가 끝난 뒤 다시 시도하세요.")
 
+    def _is_install_running(self) -> bool:
+        if self._install_thread is None:
+            return False
+        try:
+            return self._install_thread.isRunning()
+        except RuntimeError:
+            self._install_thread = None
+            return False
+
+    def _is_sample_running(self) -> bool:
+        if self._sample_thread is None:
+            return False
+        try:
+            return self._sample_thread.isRunning()
+        except RuntimeError:
+            self._sample_thread = None
+            return False
+
+    def _set_busy_tts_message(self, *, sample: bool = False) -> None:
+        self.tabs.setCurrentIndex(2)
+        if sample:
+            self.tts_license_label.setText("샘플 생성이 끝난 뒤 다시 시도하세요.")
+            return
+        self.tts_install_status.setText("설치/삭제 작업이 끝난 뒤 다시 시도하세요.")
+
+    def _ready_for_close_or_save(self) -> bool:
+        if self._is_network_test_running():
+            self._set_busy_test_message()
+            return False
+        if self._is_install_running():
+            self._set_busy_tts_message()
+            return False
+        if self._is_sample_running():
+            self._set_busy_tts_message(sample=True)
+            return False
+        return True
+
     def _is_status_probe_running(self) -> bool:
         if self._status_thread is None:
             return False
@@ -838,15 +874,13 @@ class SettingsDialog(QtWidgets.QDialog):
         self._clear_status_probe()
 
     def reject(self) -> None:
-        if self._is_network_test_running():
-            self._set_busy_test_message()
+        if not self._ready_for_close_or_save():
             return
         self._wait_for_status_probe()
         super().reject()
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
-        if self._is_network_test_running():
-            self._set_busy_test_message()
+        if not self._ready_for_close_or_save():
             event.ignore()
             return
         self._wait_for_status_probe()
