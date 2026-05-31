@@ -20,7 +20,9 @@ def _is_selectable(item) -> bool:
 
 def _key_event(
     key: QtCore.Qt.Key,
-    modifiers: QtCore.Qt.KeyboardModifier = QtCore.Qt.KeyboardModifier.NoModifier,
+    modifiers: QtCore.Qt.KeyboardModifier | QtCore.Qt.KeyboardModifiers = (
+        QtCore.Qt.KeyboardModifier.NoModifier
+    ),
 ) -> QtGui.QKeyEvent:
     return QtGui.QKeyEvent(QtCore.QEvent.KeyPress, key, modifiers)
 
@@ -357,6 +359,159 @@ def test_wordbook_keyboard_shortcuts_do_not_intercept_recent_list(qtbot):
         _key_event(QtCore.Qt.Key_C, QtCore.Qt.KeyboardModifier.ControlModifier)
     )
     assert view.status_summary.text() == status_before
+
+
+def test_list_return_opens_current_visible_entry(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    opened = []
+    view.recentEntryRequested.connect(lambda word, lang: opened.append((word, lang)))
+    view.set_recent([("apple", "en", "사과", "recent")])
+
+    view.recent_list.setCurrentItem(view.recent_list.item(0))
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_Return),
+    )
+
+    assert opened == [("apple", "en")]
+
+
+def test_search_return_opens_first_visible_wordbook_entry(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    opened = []
+    view.recentEntryRequested.connect(lambda word, lang: opened.append((word, lang)))
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+    view.recent_list.setCurrentItem(view.recent_list.item(1))
+    view.wordbook_search.setText("banana")
+
+    QtWidgets.QApplication.sendEvent(
+        view.wordbook_search,
+        _key_event(QtCore.Qt.Key_Return),
+    )
+
+    assert opened == [("banana", "en")]
+
+
+def test_search_return_does_not_open_stale_item_when_filter_has_no_results(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    opened = []
+    view.recentEntryRequested.connect(lambda word, lang: opened.append((word, lang)))
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+    view.recent_list.setCurrentItem(view.recent_list.item(0))
+    view.wordbook_search.setText("zzz")
+
+    QtWidgets.QApplication.sendEvent(
+        view.wordbook_search,
+        _key_event(QtCore.Qt.Key_Return),
+    )
+
+    assert opened == []
+    assert view.recent_list.item(0).text() == WORDBOOK_FILTER_EMPTY_TEXT
+
+
+def test_modified_return_does_not_open_list_entry(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    opened = []
+    view.recentEntryRequested.connect(lambda word, lang: opened.append((word, lang)))
+    view.set_recent([("apple", "en", "사과", "recent")])
+    view.recent_list.setCurrentItem(view.recent_list.item(0))
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_Return, QtCore.Qt.KeyboardModifier.ControlModifier),
+    )
+
+    assert opened == []
+
+
+def test_keypad_return_opens_list_entry(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    opened = []
+    view.recentEntryRequested.connect(lambda word, lang: opened.append((word, lang)))
+    view.set_recent([("apple", "en", "사과", "recent")])
+    view.recent_list.setCurrentItem(view.recent_list.item(0))
+
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_Enter, QtCore.Qt.KeyboardModifier.KeypadModifier),
+    )
+
+    assert opened == [("apple", "en")]
+
+
+def test_search_escape_clears_filter_without_header_growth(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+    view.wordbook_search.setText("banana")
+    view._search_debounce.stop()
+    view._render_wordbook()
+
+    QtWidgets.QApplication.sendEvent(
+        view.wordbook_search,
+        _key_event(QtCore.Qt.Key_Escape),
+    )
+
+    assert view.wordbook_search.text() == ""
+    assert view.recent_list.count() == 2
+    assert view.wordbook_stats.text() == "2/2개"
+    assert view.wordbook_requery_btn.isHidden()
+    assert view.wordbook_copy_btn.isHidden()
+    assert view.wordbook_delete_btn.isHidden()
+
+
+def test_search_escape_without_filter_is_not_consumed(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook("en", [("apple", "en", "", "사과")])
+
+    assert not view.eventFilter(view.wordbook_search, _key_event(QtCore.Qt.Key_Escape))
+
+
+def test_search_down_focuses_first_visible_result(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+    view.recent_list.setCurrentItem(view.recent_list.item(0))
+    view.wordbook_search.setText("banana")
+
+    QtWidgets.QApplication.sendEvent(
+        view.wordbook_search,
+        _key_event(QtCore.Qt.Key_Down),
+    )
+
+    assert view.recent_list.currentItem().data(QtCore.Qt.UserRole) == ("banana", "en")
+    assert view.recent_list.currentItem().isSelected()
+    assert view.wordbook_stats.text() == "1/2개 · 선택 1개"
 
 
 def test_wordbook_selection_keeps_row_size_and_header_actions_stable(qtbot):

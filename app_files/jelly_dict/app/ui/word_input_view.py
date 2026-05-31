@@ -536,6 +536,7 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_search = QtWidgets.QLineEdit()
         self.wordbook_search.setObjectName("wordbookSearch")
         self.wordbook_search.setPlaceholderText("단어 / 뜻 검색...")
+        self.wordbook_search.installEventFilter(self)
         self.wordbook_search.setVisible(False)
         recent_layout.addWidget(self.wordbook_search)
 
@@ -1518,15 +1519,37 @@ class WordInputView(QtWidgets.QWidget):
                 QtGui.QKeySequence.Paste
             ):
                 return self._paste_clipboard_image_if_available()
-        if (
-            watched is getattr(self, "recent_list", None)
-            and event.type() == QtCore.QEvent.KeyPress
-        ):
-            if isinstance(event, QtGui.QKeyEvent):
-                return self._handle_wordbook_list_key_press(event)
+        if event.type() == QtCore.QEvent.KeyPress and isinstance(event, QtGui.QKeyEvent):
+            if watched is getattr(self, "wordbook_search", None):
+                return self._handle_list_search_key_press(event)
+            if watched is getattr(self, "recent_list", None):
+                return self._handle_list_key_press(event)
         return super().eventFilter(watched, event)
 
-    def _handle_wordbook_list_key_press(self, event: QtGui.QKeyEvent) -> bool:
+    def _handle_list_search_key_press(self, event: QtGui.QKeyEvent) -> bool:
+        if self.wordbook_search.isHidden():
+            return False
+        if event.key() == QtCore.Qt.Key_Escape and self.wordbook_search.text():
+            self.wordbook_search.clear()
+            self._search_debounce.stop()
+            self._render_current_list()
+            return True
+        if not self._is_plain_key_press(event):
+            return False
+        if event.key() == QtCore.Qt.Key_Down:
+            self._flush_pending_search_render()
+            return self._focus_list_item(self._first_selectable_list_item())
+        if event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
+            self._flush_pending_search_render()
+            return self._open_list_item(self._first_selectable_list_item())
+        return False
+
+    def _handle_list_key_press(self, event: QtGui.QKeyEvent) -> bool:
+        if (
+            event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter)
+            and self._is_plain_key_press(event)
+        ):
+            return self._open_current_or_first_list_item()
         if self._list_mode not in ("en", "ja"):
             return False
         if event.matches(QtGui.QKeySequence.Copy):
@@ -1552,6 +1575,50 @@ class WordInputView(QtWidgets.QWidget):
                 return True
             return False
         return False
+
+    def _is_plain_key_press(self, event: QtGui.QKeyEvent) -> bool:
+        modifiers = event.modifiers() & ~QtCore.Qt.KeyboardModifier.KeypadModifier
+        return modifiers == QtCore.Qt.KeyboardModifier.NoModifier
+
+    def _flush_pending_search_render(self) -> None:
+        if self._search_debounce.isActive():
+            self._search_debounce.stop()
+            self._render_current_list()
+
+    def _first_selectable_list_item(self) -> QtWidgets.QListWidgetItem | None:
+        for index in range(self.recent_list.count()):
+            item = self.recent_list.item(index)
+            if item.flags() & QtCore.Qt.ItemIsSelectable:
+                return item
+        return None
+
+    def _current_or_first_selectable_list_item(self) -> QtWidgets.QListWidgetItem | None:
+        current = self.recent_list.currentItem()
+        if current is not None and current.flags() & QtCore.Qt.ItemIsSelectable:
+            return current
+        return self._first_selectable_list_item()
+
+    def _focus_list_item(self, item: QtWidgets.QListWidgetItem | None) -> bool:
+        if item is None:
+            return False
+        self.recent_list.setFocus(QtCore.Qt.OtherFocusReason)
+        self.recent_list.setCurrentItem(item)
+        if not item.isSelected():
+            if self._list_mode == "recent":
+                self.recent_list.clearSelection()
+            item.setSelected(True)
+        self._on_list_selection_changed()
+        return True
+
+    def _open_current_or_first_list_item(self) -> bool:
+        return self._open_list_item(self._current_or_first_selectable_list_item())
+
+    def _open_list_item(self, item: QtWidgets.QListWidgetItem | None) -> bool:
+        if item is None:
+            return False
+        self.recent_list.setCurrentItem(item)
+        self._open_recent_entry(item)
+        return True
 
     def _paste_clipboard_image_if_available(self) -> bool:
         clipboard = QtGui.QGuiApplication.clipboard()
