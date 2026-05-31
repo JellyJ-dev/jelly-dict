@@ -112,6 +112,15 @@ def test_python_runtime_policy_rejects_known_bad_qt_app_versions():
     assert first_311 < first_313
 
 
+def test_quickstart_qt_check_does_not_create_gui_application():
+    quickstart = _read(APP_FILES_ROOT / "scripts" / "quickstart.sh")
+    qt_check = quickstart.split("check_qt_runtime() {", 1)[1].split("\n}", 1)[0]
+
+    assert "libqcocoa.dylib" in qt_check
+    assert "QtWidgets" not in qt_check
+    assert "QApplication" not in qt_check
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [

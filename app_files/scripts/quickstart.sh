@@ -475,10 +475,8 @@ os.environ["QT_PLUGIN_PATH"] = str(plugins)
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platforms)
 os.environ.setdefault("QT_MAC_WANTS_LAYER", "1")
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore
 
-app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-app.quit()
 print(f"  ✓ Qt runtime: {QtCore.qVersion()} / cocoa plugin")
 PY
 }
