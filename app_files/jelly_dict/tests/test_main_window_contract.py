@@ -59,11 +59,16 @@ def test_recent_clear_uses_undo_toast_contract():
     assert "self._restore_recent(snapshot, removed)" in source
 
 
-def test_main_window_close_shortcut_hides_instead_of_closing():
+def test_main_window_close_shortcut_hides_app_and_can_restore():
     source = MAIN_WINDOW.read_text(encoding="utf-8")
 
     assert "QKeySequence.StandardKey.Close" in source
-    assert "self.close_shortcut.activated.connect(self.hide)" in source
+    assert "self.close_shortcut.activated.connect(self._hide_main_window)" in source
+    assert "NSApp.hide_(None)" in source
+    assert "_restore_hidden_main_window" in source
+    assert "ApplicationActivate" in source
+    assert "applicationStateChanged.connect(self._on_application_state_changed)" in source
+    assert "self.close_shortcut.activated.connect(self.hide)" not in source
     assert "self.close_shortcut.activated.connect(self.showMinimized)" not in source
     assert "self.close_shortcut.activated.connect(self.close)" not in source
 

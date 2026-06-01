@@ -213,6 +213,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._startup_perf = StartupPerf()
         self._macos_titlebar_chrome_applied = False
         self._app_event_filter_installed = False
+        self._app_state_signal_connected = False
         self.setWindowTitle("")
         self.setWindowFlag(QtCore.Qt.WindowType.ExpandedClientAreaHint, True)
         self.setWindowFlag(QtCore.Qt.WindowType.NoTitleBarBackgroundHint, True)
@@ -270,6 +271,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if app is not None:
             app.installEventFilter(self)
             self._app_event_filter_installed = True
+            app.applicationStateChanged.connect(self._on_application_state_changed)
+            self._app_state_signal_connected = True
         # Controllers that need widgets (input_view, status bar) must be
         # built after _build_ui so we can pass live references.
         self._wordbook_ctrl = WordbookController(
@@ -294,6 +297,10 @@ class MainWindow(QtWidgets.QMainWindow):
         return super().event(event)
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        app = QtWidgets.QApplication.instance()
+        if watched is app and event.type() == QtCore.QEvent.Type.ApplicationActivate:
+            QtCore.QTimer.singleShot(0, self._restore_hidden_main_window)
+            return False
         if event.type() == QtCore.QEvent.Type.MouseButtonDblClick and isinstance(
             event,
             QtGui.QMouseEvent,
@@ -317,6 +324,36 @@ class MainWindow(QtWidgets.QMainWindow):
             event.accept()
             return
         super().mouseDoubleClickEvent(event)
+
+    @QtCore.Slot(QtCore.Qt.ApplicationState)
+    def _on_application_state_changed(self, state: QtCore.Qt.ApplicationState) -> None:
+        if state == QtCore.Qt.ApplicationState.ApplicationActive:
+            QtCore.QTimer.singleShot(0, self._restore_hidden_main_window)
+
+    def _hide_main_window(self) -> None:
+        app = QtWidgets.QApplication.instance()
+        if (
+            sys.platform == "darwin"
+            and app is not None
+            and app.platformName().lower() == "cocoa"
+        ):
+            try:
+                from AppKit import NSApp
+
+                NSApp.hide_(None)
+                return
+            except Exception as exc:  # pragma: no cover - depends on macOS app session
+                log.info("macOS app hide fallback used: %s", exc)
+        self.hide()
+
+    def _restore_hidden_main_window(self) -> None:
+        if self.isMinimized():
+            self.showNormal()
+        elif not self.isVisible():
+            self.show()
+        if self.isVisible():
+            self.raise_()
+            self.activateWindow()
 
     def _should_handle_titlebar_double_click(
         self,
@@ -470,7 +507,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self,
         )
         self.close_shortcut.setContext(QtCore.Qt.ShortcutContext.WindowShortcut)
-        self.close_shortcut.activated.connect(self.hide)
+        self.close_shortcut.activated.connect(self._hide_main_window)
 
     def _build_menu(self) -> None:
         menu = self.menuBar()
@@ -1636,4 +1673,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if app is not None and self._app_event_filter_installed:
             app.removeEventFilter(self)
             self._app_event_filter_installed = False
+        if app is not None and self._app_state_signal_connected:
+            try:
+                app.applicationStateChanged.disconnect(self._on_application_state_changed)
+            except (RuntimeError, TypeError):
+                pass
+            self._app_state_signal_connected = False
         super().closeEvent(event)
