@@ -48,6 +48,7 @@ log = logging.getLogger(__name__)
 LAST_VIEW_STATE_KEY = "ui.last_view_mode"
 WORDBOOK_SORT_STATE_KEY = "ui.wordbook_sort_option"
 WORDBOOK_SORT_OPTIONS = {"최신순", "오래된순", "가나다순"}
+MACOS_TITLEBAR_DOUBLE_CLICK_HEIGHT = 52
 
 
 def runtime_status_summary(settings: Settings) -> str:
@@ -211,8 +212,9 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self._startup_perf = StartupPerf()
         self._macos_titlebar_chrome_applied = False
-        self._macos_titlebar_toolbar = None
+        self._app_event_filter_installed = False
         self.setWindowTitle("")
+        self.setWindowFlag(QtCore.Qt.WindowType.ExpandedClientAreaHint, True)
         self.setWindowFlag(QtCore.Qt.WindowType.NoTitleBarBackgroundHint, True)
         self.resize(1180, 820)
         self.setMinimumSize(1020, 700)
@@ -264,6 +266,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         with self._startup_perf.span("build_ui"):
             self._build_ui()
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._app_event_filter_installed = True
         # Controllers that need widgets (input_view, status bar) must be
         # built after _build_ui so we can pass live references.
         self._wordbook_ctrl = WordbookController(
@@ -282,27 +288,81 @@ class MainWindow(QtWidgets.QMainWindow):
         QtCore.QTimer.singleShot(0, lambda: self._startup_perf.mark("first_paint"))
         self._schedule_idle_startup_tasks()
 
+    def event(self, event: QtCore.QEvent) -> bool:
+        if event.type() == QtCore.QEvent.Type.PlatformSurface:
+            self._apply_macos_titlebar_chrome()
+        return super().event(event)
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if event.type() == QtCore.QEvent.Type.MouseButtonDblClick and isinstance(
+            event,
+            QtGui.QMouseEvent,
+        ):
+            widget = watched if isinstance(watched, QtWidgets.QWidget) else None
+            if widget is not None and widget.window() is self:
+                window_pos = self.mapFromGlobal(event.globalPosition().toPoint())
+                if self._should_handle_titlebar_double_click(event, window_pos):
+                    self._perform_titlebar_zoom()
+                    event.accept()
+                    return True
+        return super().eventFilter(watched, event)
+
     def showEvent(self, event: QtGui.QShowEvent) -> None:  # noqa: N802 - Qt API
         super().showEvent(event)
         self._apply_macos_titlebar_chrome()
 
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if self._should_handle_titlebar_double_click(event):
+            self._perform_titlebar_zoom()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def _should_handle_titlebar_double_click(
+        self,
+        event: QtGui.QMouseEvent,
+        window_pos: QtCore.QPoint | None = None,
+    ) -> bool:
+        if sys.platform != "darwin" or event.button() != QtCore.Qt.LeftButton:
+            return False
+        y_pos = window_pos.y() if window_pos is not None else event.position().y()
+        return 0 <= y_pos <= MACOS_TITLEBAR_DOUBLE_CLICK_HEIGHT
+
+    def _perform_titlebar_zoom(self) -> None:
+        app = QtWidgets.QApplication.instance()
+        if (
+            sys.platform == "darwin"
+            and app is not None
+            and app.platformName().lower() == "cocoa"
+        ):
+            try:
+                import ctypes
+                import objc
+
+                ns_view = objc.objc_object(c_void_p=ctypes.c_void_p(int(self.winId())))
+                ns_window = ns_view.window()
+                if ns_window is not None:
+                    ns_window.performZoom_(None)
+                    return
+            except Exception as exc:  # pragma: no cover - depends on macOS window server
+                log.info("macOS titlebar zoom fallback used: %s", exc)
+        self.showNormal() if self.isMaximized() else self.showMaximized()
+
     def _apply_macos_titlebar_chrome(self) -> None:
         if self._macos_titlebar_chrome_applied or sys.platform != "darwin":
             return
+        app = QtWidgets.QApplication.instance()
+        if app is not None and app.platformName().lower() != "cocoa":
+            return
         try:
-            self.setUnifiedTitleAndToolBarOnMac(True)
-
             import ctypes
             import objc
             from AppKit import (
                 NSColor,
+                NSMaxYEdge,
                 NSTitlebarSeparatorStyleNone,
-                NSToolbar,
-                NSToolbarDisplayModeIconOnly,
-                NSToolbarSizeModeSmall,
                 NSWindowStyleMaskFullSizeContentView,
                 NSWindowTitleHidden,
-                NSWindowToolbarStyleUnifiedCompact,
             )
 
             ns_view = objc.objc_object(c_void_p=ctypes.c_void_p(int(self.winId())))
@@ -324,13 +384,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 ns_window.styleMask() | NSWindowStyleMaskFullSizeContentView
             )
             ns_window.setTitlebarSeparatorStyle_(NSTitlebarSeparatorStyleNone)
-            toolbar = NSToolbar.alloc().initWithIdentifier_("JellyDictUnifiedTitlebar")
-            toolbar.setShowsBaselineSeparator_(False)
-            toolbar.setDisplayMode_(NSToolbarDisplayModeIconOnly)
-            toolbar.setSizeMode_(NSToolbarSizeModeSmall)
-            ns_window.setToolbar_(toolbar)
-            ns_window.setToolbarStyle_(NSWindowToolbarStyleUnifiedCompact)
-            self._macos_titlebar_toolbar = toolbar
+            ns_window.setAutorecalculatesContentBorderThickness_forEdge_(
+                False,
+                NSMaxYEdge,
+            )
+            ns_window.setContentBorderThickness_forEdge_(0, NSMaxYEdge)
             ns_window.setMovableByWindowBackground_(True)
             self._macos_titlebar_chrome_applied = True
         except Exception as exc:  # pragma: no cover - depends on macOS window server
@@ -1545,4 +1603,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._provider.close()
         except Exception as exc:
             log.warning("provider close failed: %s", exc)
+        app = QtWidgets.QApplication.instance()
+        if app is not None and self._app_event_filter_installed:
+            app.removeEventFilter(self)
+            self._app_event_filter_installed = False
         super().closeEvent(event)
