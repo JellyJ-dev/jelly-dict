@@ -51,6 +51,9 @@ settings.local.json
 jelly_dict.zip
 ChatGPT Image*.png
 
+# local generated docs / gallery drafts
+docs/
+
 # downloaded dictionary datasets
 전체 내려받기_한국어기초사전_xls_*/
 *한국어기초사전*xls*/
