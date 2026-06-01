@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6 import QtWidgets
 
 from app.storage.settings_store import Settings
 from app.ui.main_window import TransientStatusBar, runtime_status_summary
+
+
+MAIN_WINDOW = Path(__file__).resolve().parents[1] / "app" / "ui" / "main_window.py"
 
 
 def test_runtime_status_summary_balances_language_paths():
@@ -20,6 +25,16 @@ def test_runtime_status_summary_balances_language_paths():
     assert "Excel:" not in summary
     assert " / " not in summary
     assert summary.endswith("· Naver · cache on")
+
+
+def test_main_window_hides_native_macos_titlebar_chrome():
+    source = MAIN_WINDOW.read_text(encoding="utf-8")
+
+    assert 'self.setWindowTitle("")' in source
+    assert "setTitleVisibility_" in source
+    assert "NSWindowTitleHidden" in source
+    assert "setTitlebarAppearsTransparent_(True)" in source
+    assert "NSWindowStyleMaskFullSizeContentView" in source
 
 
 def test_transient_status_bar_auto_hides_messages(qtbot):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
@@ -209,7 +210,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self._startup_perf = StartupPerf()
-        self.setWindowTitle("jelly dict")
+        self._macos_titlebar_chrome_applied = False
+        self.setWindowTitle("")
         self.resize(1180, 820)
         self.setMinimumSize(1020, 700)
 
@@ -277,6 +279,38 @@ class MainWindow(QtWidgets.QMainWindow):
 
         QtCore.QTimer.singleShot(0, lambda: self._startup_perf.mark("first_paint"))
         self._schedule_idle_startup_tasks()
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:  # noqa: N802 - Qt API
+        super().showEvent(event)
+        self._apply_macos_titlebar_chrome()
+
+    def _apply_macos_titlebar_chrome(self) -> None:
+        if self._macos_titlebar_chrome_applied or sys.platform != "darwin":
+            return
+        try:
+            self.setUnifiedTitleAndToolBarOnMac(True)
+
+            import ctypes
+            import objc
+            from AppKit import (
+                NSWindowStyleMaskFullSizeContentView,
+                NSWindowTitleHidden,
+            )
+
+            ns_view = objc.objc_object(c_void_p=ctypes.c_void_p(int(self.winId())))
+            ns_window = ns_view.window()
+            if ns_window is None:
+                QtCore.QTimer.singleShot(0, self._apply_macos_titlebar_chrome)
+                return
+            ns_window.setTitleVisibility_(NSWindowTitleHidden)
+            ns_window.setTitlebarAppearsTransparent_(True)
+            ns_window.setStyleMask_(
+                ns_window.styleMask() | NSWindowStyleMaskFullSizeContentView
+            )
+            ns_window.setMovableByWindowBackground_(True)
+            self._macos_titlebar_chrome_applied = True
+        except Exception as exc:  # pragma: no cover - depends on macOS window server
+            log.info("macOS titlebar chrome update skipped: %s", exc)
 
     # ---------- UI scaffolding -------------------------------------
 
