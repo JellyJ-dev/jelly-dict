@@ -17,7 +17,7 @@ class _ElideLabel(QtWidgets.QLabel):
 
     def setText(self, text: str) -> None:  # noqa: N802 - Qt API
         self._full_text = text or ""
-        self.setToolTip(self._full_text)
+        self.setToolTip("")
         super().setText(self._elided())
 
     def resizeEvent(self, event) -> None:

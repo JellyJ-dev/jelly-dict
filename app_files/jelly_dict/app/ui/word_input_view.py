@@ -14,7 +14,6 @@ from app.ui.widgets.wordbook_items import (
     WordbookItem,
     coerce_wordbook_item,
     filter_wordbook_items,
-    wordbook_tooltip,
 )
 from app.ui.widgets.wordbook_row import WordbookRow
 
@@ -1095,7 +1094,7 @@ class WordInputView(QtWidgets.QWidget):
             qt_item.setFlags(QtCore.Qt.ItemIsEnabled)
             qt_item.setText(display_label)
             qt_item.setData(QtCore.Qt.UserRole, (word, language))
-            qt_item.setToolTip(label)
+            qt_item.setToolTip("")
             qt_item.setSizeHint(QtCore.QSize(620, 36))
             self.recent_list.addItem(qt_item)
 
@@ -1261,7 +1260,7 @@ class WordInputView(QtWidgets.QWidget):
                 qt_item.setText("")
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (item.word, item.language))
-                qt_item.setToolTip(wordbook_tooltip(item))
+                qt_item.setToolTip("")
                 qt_item.setSizeHint(QtCore.QSize(620, 62))
                 self._set_wordbook_row_widget(qt_item, item)
             # Append any extra rows.
@@ -1270,7 +1269,7 @@ class WordInputView(QtWidgets.QWidget):
                 qt_item = QtWidgets.QListWidgetItem()
                 qt_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 qt_item.setData(QtCore.Qt.UserRole, (item.word, item.language))
-                qt_item.setToolTip(wordbook_tooltip(item))
+                qt_item.setToolTip("")
                 qt_item.setSizeHint(QtCore.QSize(620, 62))
                 self.recent_list.addItem(qt_item)
                 self._set_wordbook_row_widget(qt_item, item)

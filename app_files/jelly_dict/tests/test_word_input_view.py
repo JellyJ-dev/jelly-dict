@@ -68,6 +68,7 @@ def test_recent_items_enable_clear_action(qtbot):
     assert view.recent_list.count() == 1
     assert view.recent_list.item(0).text() == "[en] apple  —  사과"
     assert not _is_selectable(view.recent_list.item(0))
+    assert view.recent_list.item(0).toolTip() == ""
     assert view.recent_list.selectionMode() == QtWidgets.QAbstractItemView.NoSelection
     assert view.clear_recent_btn.isEnabled()
     assert not view.wordbook_search.isHidden()
@@ -212,7 +213,7 @@ def test_wordbook_search_does_not_match_language_code_for_every_row(qtbot):
     assert view.recent_list.item(0).text() == WORDBOOK_FILTER_EMPTY_TEXT
 
 
-def test_wordbook_tooltip_exposes_metadata_without_visible_badges(qtbot):
+def test_wordbook_cards_do_not_show_hover_tooltips(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
     view.set_wordbook(
@@ -231,16 +232,12 @@ def test_wordbook_tooltip_exposes_metadata_without_visible_badges(qtbot):
         ],
     )
 
-    tooltip = view.recent_list.item(0).toolTip()
-
-    assert "月日" in tooltip
-    assert "つきひ" in tooltip
-    assert "태그: review" in tooltip
-    assert "메모: 시험 전 복습" in tooltip
-    assert "예문 1개:" in tooltip
-    assert "수정: 2026-05-31" in tooltip
+    assert view.recent_list.item(0).toolTip() == ""
     row = view.recent_list.itemWidget(view.recent_list.item(0))
     assert isinstance(row, WordbookRow)
+    assert row.findChild(QtWidgets.QLabel, "wordbookWord").toolTip() == ""
+    assert row.findChild(QtWidgets.QLabel, "wordbookReading").toolTip() == ""
+    assert row.findChild(QtWidgets.QLabel, "wordbookMeaning").toolTip() == ""
     assert not row.findChildren(QtWidgets.QLabel, "wordbookBadge")
 
 
