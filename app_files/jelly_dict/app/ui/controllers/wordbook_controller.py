@@ -123,9 +123,6 @@ class WordbookController:
             for entry in entries
         ]
         self._input_view.set_wordbook(language, items)
-        self._status.showMessage(
-            f"{'일본어' if language == 'ja' else '영어'} 단어장 {len(items)}개 (정렬: {sort_option})"
-        )
 
     def _load_entries(self, language: str) -> list:
         path = Path(self._settings.excel_path_for(language))

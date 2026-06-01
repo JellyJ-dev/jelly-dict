@@ -250,7 +250,7 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
     view.recent_list.setCurrentItem(first_item)
     first_item.setSelected(True)
 
-    assert view.wordbook_stats.text() == "2/2개 · 선택 1개"
+    assert view.wordbook_stats.text() == "2개 · 선택 1개"
     assert view.wordbook_delete_btn.isHidden()
     assert not first_row.action_bar.isHidden()
 
@@ -265,7 +265,7 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
     second_row = view.recent_list.itemWidget(second_item)
     assert isinstance(second_row, WordbookRow)
 
-    assert view.wordbook_stats.text() == "2/2개 · 선택 2개"
+    assert view.wordbook_stats.text() == "2개 · 선택 2개"
     assert view.wordbook_delete_btn.isHidden()
     assert not first_row.action_bar.isHidden()
     assert second_row.action_bar.isHidden()
@@ -316,7 +316,7 @@ def test_wordbook_keyboard_shortcuts_reuse_row_actions_without_header_growth(qtb
         view.recent_list,
         _key_event(QtCore.Qt.Key_A, QtCore.Qt.KeyboardModifier.ControlModifier)
     )
-    assert view.wordbook_stats.text() == "2/2개 · 선택 2개"
+    assert view.wordbook_stats.text() == "2개 · 선택 2개"
     assert view.wordbook_delete_btn.isHidden()
 
 
@@ -449,7 +449,7 @@ def test_search_escape_clears_filter_without_header_growth(qtbot):
 
     assert view.wordbook_search.text() == ""
     assert view.recent_list.count() == 2
-    assert view.wordbook_stats.text() == "2/2개"
+    assert view.wordbook_stats.text() == "2개"
     assert view.wordbook_delete_btn.isHidden()
 
 
@@ -481,7 +481,7 @@ def test_search_down_focuses_first_visible_result(qtbot):
 
     assert view.recent_list.currentItem().data(QtCore.Qt.UserRole) == ("banana", "en")
     assert view.recent_list.currentItem().isSelected()
-    assert view.wordbook_stats.text() == "1/2개 · 선택 1개"
+    assert view.wordbook_stats.text() == "1개 · 선택 1개"
 
 
 def test_wordbook_selection_keeps_row_size_and_header_actions_stable(qtbot):

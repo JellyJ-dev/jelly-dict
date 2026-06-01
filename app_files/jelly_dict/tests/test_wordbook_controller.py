@@ -94,7 +94,7 @@ def test_wordbook_controller_preserves_metadata_for_inline_display(tmp_path):
     assert item.memo == "중요 단어"
     assert item.examples == ("An apple a day 하루 사과 하나",)
     assert item.updated_at.startswith("2026-05-31")
-    assert "영어 단어장 1개" in status.message
+    assert status.message == ""
 
 
 def test_wordbook_controller_delete_shows_undo_toast_and_restores_backup(

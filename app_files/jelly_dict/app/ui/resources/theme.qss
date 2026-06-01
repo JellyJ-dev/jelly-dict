@@ -21,9 +21,19 @@ QMenuBar::item:selected, QMenu {
     color: #e7e1d6;
 }
 QStatusBar {
-    background: #1b1b1a;
+    background: transparent;
     color: #aaa59c;
-    border-top: 1px solid #30302e;
+    border: none;
+    padding: 0 8px 6px 8px;
+}
+QFrame#transientStatusBar {
+    background: transparent;
+    border: none;
+}
+QLabel#transientStatusMessage {
+    color: rgba(170, 165, 156, 210);
+    font-size: 12px;
+    font-weight: 600;
 }
 QMenu {
     background: #242422;

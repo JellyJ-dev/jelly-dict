@@ -89,6 +89,21 @@ def test_delete_undo_toast_uses_compact_translucent_contract():
     assert "text-align: center;" in button
 
 
+def test_status_bar_avoids_persistent_bottom_rule_contract():
+    qss = THEME.read_text(encoding="utf-8")
+
+    status_bar = _qss_block(qss, "QStatusBar")
+    transient_status = _qss_block(qss, "QFrame#transientStatusBar")
+    transient_message = _qss_block(qss, "QLabel#transientStatusMessage")
+
+    assert "background: transparent;" in status_bar
+    assert "border: none;" in status_bar
+    assert "border-top" not in status_bar
+    assert "background: transparent;" in transient_status
+    assert "border: none;" in transient_status
+    assert "rgba(170, 165, 156" in transient_message
+
+
 def test_wordbook_row_actions_are_edit_delete_only_contract():
     input_source = WORD_INPUT_VIEW.read_text(encoding="utf-8")
     row_source = WORDBOOK_ROW.read_text(encoding="utf-8")

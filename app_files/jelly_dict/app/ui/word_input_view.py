@@ -1346,9 +1346,8 @@ class WordInputView(QtWidgets.QWidget):
             return
         selected = self._selected_wordbook_words()
         visible_count = self._visible_wordbook_count()
-        total_count = len(self._wordbook_items)
         selected_count = len(selected)
-        stats = f"{visible_count}/{total_count}개" if total_count else "0개"
+        stats = f"{visible_count}개"
         if selected_count:
             stats += f" · 선택 {selected_count}개"
         self.wordbook_stats.setText(stats)
