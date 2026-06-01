@@ -3,8 +3,13 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.word_input_view import (
+    HERO_TO_WORDBOOK_SPACING,
+    NORMAL_LIST_HEIGHT,
     RECENT_EMPTY_TEXT,
     RECENT_FILTER_EMPTY_TEXT,
+    ROOT_LAYOUT_SPACING,
+    ROOT_MARGIN_EXPANDED,
+    ROOT_MARGIN_NORMAL,
     WORDBOOK_EMPTY_TEXT,
     WORDBOOK_FILTER_EMPTY_TEXT,
     WordInputView,
@@ -57,6 +62,35 @@ def test_recent_empty_state_disables_clear_action(qtbot):
     assert view.recent_list.item(0).text() == RECENT_EMPTY_TEXT
     assert not _is_selectable(view.recent_list.item(0))
     assert not view.clear_recent_btn.isEnabled()
+
+
+def test_titlebarless_layout_pulls_hero_up_and_preserves_list_room(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+
+    margins = view._root_layout.contentsMargins()
+
+    assert (
+        margins.left(),
+        margins.top(),
+        margins.right(),
+        margins.bottom(),
+    ) == ROOT_MARGIN_NORMAL
+    assert HERO_TO_WORDBOOK_SPACING == 4
+    assert view._root_layout.spacing() == ROOT_LAYOUT_SPACING
+    assert NORMAL_LIST_HEIGHT >= 348
+    assert view.recent_list.minimumHeight() == NORMAL_LIST_HEIGHT
+
+    view.set_wordbook("en", [("apple", "en", "", "사과")])
+    view._toggle_wordbook_expanded()
+    expanded_margins = view._root_layout.contentsMargins()
+
+    assert (
+        expanded_margins.left(),
+        expanded_margins.top(),
+        expanded_margins.right(),
+        expanded_margins.bottom(),
+    ) == ROOT_MARGIN_EXPANDED
 
 
 def test_recent_items_enable_clear_action(qtbot):

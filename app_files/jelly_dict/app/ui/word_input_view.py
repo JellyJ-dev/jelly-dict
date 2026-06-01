@@ -17,7 +17,11 @@ from app.ui.widgets.wordbook_items import (
 )
 from app.ui.widgets.wordbook_row import WordbookRow
 
-NORMAL_LIST_HEIGHT = 320
+NORMAL_LIST_HEIGHT = 348
+ROOT_MARGIN_NORMAL = (64, 8, 64, 16)
+ROOT_MARGIN_EXPANDED = (36, 14, 36, 16)
+HERO_TO_WORDBOOK_SPACING = 4
+ROOT_LAYOUT_SPACING = 6
 RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resources"
 RECENT_EMPTY_TEXT = "최근 기록 없음"
 RECENT_FILTER_EMPTY_TEXT = "검색 결과 없음"
@@ -337,8 +341,8 @@ class WordInputView(QtWidgets.QWidget):
 
     def _build_ui(self) -> None:
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(64, 28, 64, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*ROOT_MARGIN_NORMAL)
+        layout.setSpacing(ROOT_LAYOUT_SPACING)
         self._root_layout = layout
 
         self.top_area = QtWidgets.QFrame()
@@ -347,8 +351,6 @@ class WordInputView(QtWidgets.QWidget):
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(6)
         layout.addWidget(self.top_area)
-
-        top_layout.addSpacing(8)
 
         self.title = QtWidgets.QLabel("jelly dict")
         self.title.setObjectName("heroTitle")
@@ -527,7 +529,7 @@ class WordInputView(QtWidgets.QWidget):
         self.lookup_width_animation.setDuration(160)
         self.lookup_width_animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
 
-        layout.addSpacing(10)
+        layout.addSpacing(HERO_TO_WORDBOOK_SPACING)
 
         self.recent_panel = QtWidgets.QFrame()
         self.recent_panel.setObjectName("recentPanel")
@@ -1342,10 +1344,7 @@ class WordInputView(QtWidgets.QWidget):
             QtCore.Qt.Alignment() if expanded else QtCore.Qt.AlignHCenter,
         )
         self._root_layout.setContentsMargins(
-            36 if expanded else 64,
-            22 if expanded else 28,
-            36 if expanded else 64,
-            16,
+            *(ROOT_MARGIN_EXPANDED if expanded else ROOT_MARGIN_NORMAL)
         )
         _repolish(self.recent_panel)
 
