@@ -221,7 +221,7 @@ class WordInputView(QtWidgets.QWidget):
     bulkRetryFailedRequested = QtCore.Signal()
     bulkClearFailedRequested = QtCore.Signal()
     wordbookSortChanged = QtCore.Signal(str)
-    wordbookRequeryRequested = QtCore.Signal(object, str)  # list[str], language
+    wordbookEditRequested = QtCore.Signal(str, str)  # language, word
     ocrBatchSubmitted = QtCore.Signal(object, str)  # list[str], forced_language
     ocrBulkLookupRequested = QtCore.Signal(list, str)  # list[str], forced_language
     clearRecentRequested = QtCore.Signal()
@@ -515,16 +515,6 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_select_visible_btn.setToolTip("현재 검색 결과의 단어를 모두 선택")
         self.wordbook_select_visible_btn.setVisible(False)
         recent_header.addWidget(self.wordbook_select_visible_btn)
-        self.wordbook_requery_btn = QtWidgets.QPushButton("선택 재조회", self.recent_panel)
-        self.wordbook_requery_btn.setObjectName("wordbookActionButton")
-        self.wordbook_requery_btn.setToolTip("선택한 단어를 다시 조회해 뜻과 예문을 보강")
-        self.wordbook_requery_btn.setVisible(False)
-        self.wordbook_requery_btn.setEnabled(False)
-        self.wordbook_copy_btn = QtWidgets.QPushButton("선택 복사", self.recent_panel)
-        self.wordbook_copy_btn.setObjectName("wordbookActionButton")
-        self.wordbook_copy_btn.setToolTip("선택한 단어를 클립보드에 복사")
-        self.wordbook_copy_btn.setVisible(False)
-        self.wordbook_copy_btn.setEnabled(False)
         self.wordbook_export_btn = AnkiExportButton()
         self.wordbook_export_btn.setVisible(False)
         recent_header.addWidget(self.wordbook_export_btn)
@@ -567,11 +557,11 @@ class WordInputView(QtWidgets.QWidget):
         self.status_summary.setObjectName("statusSummary")
         self.status_summary.setAlignment(QtCore.Qt.AlignCenter)
         self.status_summary.setWordWrap(False)
-        self.status_summary.setMinimumWidth(360)
+        self.status_summary.setMinimumWidth(480)
         self.status_summary.setSizePolicy(
-            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
-        self.status_summary.setMaximumWidth(720)
+        self.status_summary.setMaximumWidth(900)
         footer.addWidget(self.status_summary)
 
         self.settings_btn = QtWidgets.QPushButton("설정")
@@ -595,8 +585,6 @@ class WordInputView(QtWidgets.QWidget):
         self.input.textEdited.connect(lambda _text: self.prewarmRequested.emit())
         self.wordbook_delete_btn.clicked.connect(self._request_wordbook_delete)
         self.wordbook_select_visible_btn.clicked.connect(self._select_visible_wordbook_items)
-        self.wordbook_requery_btn.clicked.connect(self._requery_selected_wordbook_items)
-        self.wordbook_copy_btn.clicked.connect(self._copy_selected_wordbook_items)
         self.wordbook_expand_btn.clicked.connect(self._toggle_wordbook_expanded)
         # Restart the debounce timer on every keystroke; final render
         # happens once the user pauses typing.
@@ -995,10 +983,6 @@ class WordInputView(QtWidgets.QWidget):
         self.clear_recent_btn.setVisible(True)
         self.clear_recent_btn.setEnabled(bool(display_items))
         self.wordbook_select_visible_btn.setVisible(False)
-        self.wordbook_requery_btn.setVisible(False)
-        self.wordbook_requery_btn.setEnabled(False)
-        self.wordbook_copy_btn.setVisible(False)
-        self.wordbook_copy_btn.setEnabled(False)
         self.wordbook_export_btn.setVisible(False)
         self.wordbook_export_btn.setEnabled(True)
         self.wordbook_delete_btn.setVisible(False)
@@ -1170,8 +1154,6 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_stats.setVisible(True)
         self.clear_recent_btn.setVisible(False)
         self.wordbook_select_visible_btn.setVisible(True)
-        self.wordbook_requery_btn.setVisible(False)
-        self.wordbook_copy_btn.setVisible(False)
         self.wordbook_export_btn.setVisible(True)
         self.wordbook_export_btn.setEnabled(bool(self._wordbook_items))
         self.wordbook_export_btn.set_language(language)
@@ -1252,8 +1234,7 @@ class WordInputView(QtWidgets.QWidget):
         item: WordbookDisplayItem,
     ) -> WordbookRow:
         row = WordbookRow(item.language, item.word, item.reading, item.hint)
-        row.requeryRequested.connect(self._requery_wordbook_from_row)
-        row.copyRequested.connect(self._copy_wordbook_from_row)
+        row.editRequested.connect(self._edit_wordbook_from_row)
         row.deleteRequested.connect(self._delete_wordbook_from_row)
         return row
 
@@ -1372,11 +1353,7 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_stats.setText(stats)
         self.wordbook_select_visible_btn.setVisible(visible_count > 0)
         self.wordbook_select_visible_btn.setEnabled(visible_count > 0)
-        self.wordbook_requery_btn.setVisible(False)
-        self.wordbook_copy_btn.setVisible(False)
         self.wordbook_delete_btn.setVisible(False)
-        self.wordbook_requery_btn.setEnabled(False)
-        self.wordbook_copy_btn.setEnabled(False)
         self.wordbook_delete_btn.setEnabled(False)
         self.wordbook_delete_btn.setText("선택 삭제")
         self._sync_wordbook_row_actions(selected_count)
@@ -1437,30 +1414,14 @@ class WordInputView(QtWidgets.QWidget):
             return selected
         return [word] if word.strip() else []
 
-    def _requery_wordbook_from_row(self, word: str) -> None:
-        words = self._wordbook_words_for_row_action(word)
-        if words:
-            self.wordbookRequeryRequested.emit(words, self._list_mode)
-
-    def _copy_wordbook_from_row(self, word: str) -> None:
-        words = self._wordbook_words_for_row_action(word)
-        if not words:
-            return
-        QtWidgets.QApplication.clipboard().setText("\n".join(words))
-        self.status_summary.setText(f"선택한 단어 {len(words)}개 복사됨")
+    def _edit_wordbook_from_row(self, word: str) -> None:
+        if self._list_mode in ("en", "ja") and word.strip():
+            self.wordbookEditRequested.emit(self._list_mode, word.strip())
 
     def _delete_wordbook_from_row(self, word: str) -> None:
         words = self._wordbook_words_for_row_action(word)
         if words:
             self.wordbookDeleteRequested.emit(self._list_mode, words)
-
-    def _requery_selected_wordbook_items(self) -> None:
-        if self._list_mode not in ("en", "ja"):
-            return
-        words = self._selected_wordbook_words()
-        if not words:
-            return
-        self.wordbookRequeryRequested.emit(words, self._list_mode)
 
     def _copy_selected_wordbook_items(self) -> None:
         words = self._selected_wordbook_words()
@@ -1563,15 +1524,6 @@ class WordInputView(QtWidgets.QWidget):
         if event.key() in (QtCore.Qt.Key_Delete, QtCore.Qt.Key_Backspace):
             if self._selected_wordbook_words():
                 self._request_wordbook_delete()
-                return True
-            return False
-        shortcut_modifier = (
-            QtCore.Qt.KeyboardModifier.ControlModifier
-            | QtCore.Qt.KeyboardModifier.MetaModifier
-        )
-        if event.key() == QtCore.Qt.Key_R and event.modifiers() & shortcut_modifier:
-            if self._selected_wordbook_words():
-                self._requery_selected_wordbook_items()
                 return True
             return False
         return False

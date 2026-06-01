@@ -316,6 +316,25 @@ class WordListDialog(QtWidgets.QDialog):
                 width: 12px;
                 height: 12px;
             }
+            QComboBox#wordListSort QAbstractItemView {
+                background: #242422;
+                color: #e7e1d6;
+                border: 1px solid #454542;
+                border-radius: 11px;
+                outline: 0;
+                padding: 6px;
+                selection-background-color: #3a322d;
+                selection-color: #f1ece2;
+            }
+            QComboBox#wordListSort QAbstractItemView::item {
+                min-height: 30px;
+                border-radius: 8px;
+                padding: 4px 10px;
+            }
+            QComboBox#wordListSort QAbstractItemView::item:selected {
+                background: #3a322d;
+                color: #f1ece2;
+            }
             QLineEdit#wordListSearch::placeholder {
                 color: #77746d;
             }

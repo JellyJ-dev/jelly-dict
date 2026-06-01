@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6 import QtCore, QtWidgets
 
 from app.services.export_preflight import PreflightResult
+from app.ui.dialog_buttons import configure_footer_button
 from app.ui.export_options import ExportOptions, ExportPlan, language_label
 
 
@@ -120,14 +121,14 @@ class ExportOptionsDialog(QtWidgets.QDialog):
 
         buttons = QtWidgets.QDialogButtonBox()
         export_btn = buttons.addButton("내보내기", QtWidgets.QDialogButtonBox.AcceptRole)
-        export_btn.setObjectName("settingsPrimaryButton")
+        configure_footer_button(export_btn, role="primary", min_width=82)
         if self._has_hard_blockers():
             export_btn.setEnabled(False)
             export_btn.setToolTip("진행 불가 항목을 해결한 뒤 내보낼 수 있습니다.")
         cancel_btn = buttons.addButton("취소", QtWidgets.QDialogButtonBox.RejectRole)
-        cancel_btn.setObjectName("settingsSecondaryButton")
+        configure_footer_button(cancel_btn, role="secondary")
         detail_btn = buttons.addButton("상세 설정", QtWidgets.QDialogButtonBox.ActionRole)
-        detail_btn.setObjectName("settingsSecondaryButton")
+        configure_footer_button(detail_btn, role="secondary", min_width=88)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         detail_btn.clicked.connect(self._open_settings)

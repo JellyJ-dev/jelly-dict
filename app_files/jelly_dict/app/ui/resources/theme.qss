@@ -66,14 +66,15 @@ QDoubleSpinBox:focus {
 QScrollBar:vertical {
     background: transparent;
     border: none;
-    border-radius: 6px;
-    width: 12px;
-    margin: 8px 3px 8px 3px;
+    border-radius: 8px;
+    width: 14px;
+    margin: 8px 4px 8px 4px;
 }
 QScrollBar::handle:vertical {
     background: #454542;
-    border-radius: 5px;
-    min-height: 40px;
+    border: 2px solid transparent;
+    border-radius: 7px;
+    min-height: 44px;
 }
 QScrollBar::handle:vertical:hover {
     background: #6a6963;
@@ -91,14 +92,15 @@ QScrollBar::sub-page:vertical {
 QScrollBar:horizontal {
     background: transparent;
     border: none;
-    border-radius: 6px;
-    height: 12px;
-    margin: 3px 8px 3px 8px;
+    border-radius: 8px;
+    height: 14px;
+    margin: 4px 8px 4px 8px;
 }
 QScrollBar::handle:horizontal {
     background: #454542;
-    border-radius: 5px;
-    min-width: 40px;
+    border: 2px solid transparent;
+    border-radius: 7px;
+    min-width: 44px;
 }
 QScrollBar::handle:horizontal:hover {
     background: #6a6963;
@@ -464,12 +466,12 @@ QPushButton#wordbookDeleteButton {
 }
 QWidget#wordbookExportShell {
     background: transparent;
-    border: 1px solid #454542;
+    border: 1px solid transparent;
     border-radius: 11px;
 }
 QWidget#wordbookExportShell[active="true"] {
     background: #282826;
-    border-color: #e8744f;
+    border-color: #3f3f3c;
 }
 QPushButton#wordbookExportButton {
     background: transparent;
@@ -477,10 +479,11 @@ QPushButton#wordbookExportButton {
     border: none;
     border-radius: 0;
     padding: 0;
-    min-height: 30px;
-    max-height: 30px;
-    font-size: 12px;
+    min-height: 34px;
+    max-height: 34px;
+    font-size: 13px;
     font-weight: 700;
+    text-align: center;
 }
 QPushButton#wordbookExportButton:disabled,
 QPushButton#wordbookExportOptionButton:disabled {
@@ -528,7 +531,7 @@ QPushButton#wordbookExportOptionButton:hover {
     background: transparent;
 }
 QFrame#wordbookExportDivider {
-    background: #454542;
+    background: transparent;
     min-width: 1px;
     max-width: 1px;
     min-height: 18px;
@@ -538,7 +541,7 @@ QWidget#wordbookExportShell:disabled QFrame#wordbookExportDivider {
     background: #333331;
 }
 QWidget#wordbookExportShell[active="true"] QFrame#wordbookExportDivider {
-    background: #e8744f;
+    background: #3f3f3c;
 }
 QFrame#ankiExportPopup {
     background: #242422;
@@ -922,16 +925,17 @@ QScrollArea#settingsScroll {
     border: none;
 }
 QDialog#settingsDialog QScrollBar:vertical {
-    background: #171716;
+    background: transparent;
     border: none;
-    border-radius: 6px;
-    width: 12px;
-    margin: 8px 3px 8px 3px;
+    border-radius: 8px;
+    width: 14px;
+    margin: 8px 4px 8px 4px;
 }
 QDialog#settingsDialog QScrollBar::handle:vertical {
     background: #454542;
-    border-radius: 5px;
-    min-height: 42px;
+    border: 2px solid transparent;
+    border-radius: 7px;
+    min-height: 44px;
 }
 QDialog#settingsDialog QScrollBar::handle:vertical:hover {
     background: #6a6963;
@@ -992,12 +996,21 @@ QComboBox#settingsCombo::down-arrow {
 QComboBox#settingsCombo QAbstractItemView {
     background: #242422;
     color: #e7e1d6;
-    border: none;
-    border-radius: 0;
+    border: 1px solid #454542;
+    border-radius: 11px;
     outline: 0;
-    padding: 0;
-    selection-background-color: #e8744f;
-    selection-color: #e7e1d6;
+    padding: 6px;
+    selection-background-color: #3a322d;
+    selection-color: #f1ece2;
+}
+QComboBox#settingsCombo QAbstractItemView::item {
+    min-height: 30px;
+    border-radius: 8px;
+    padding: 4px 10px;
+}
+QComboBox#settingsCombo QAbstractItemView::item:selected {
+    background: #3a322d;
+    color: #f1ece2;
 }
 QDoubleSpinBox#settingsSpin {
     padding-right: 34px;
@@ -1072,6 +1085,7 @@ QPushButton#settingsPrimaryButton {
     padding: 7px 16px;
     font-size: 13px;
     font-weight: 800;
+    text-align: center;
 }
 QPushButton#settingsPrimaryButton:hover {
     background: #f29a78;
@@ -1086,6 +1100,7 @@ QPushButton#settingsSecondaryButton {
     min-height: 22px;
     font-size: 13px;
     font-weight: 700;
+    text-align: center;
 }
 QPushButton#settingsSecondaryButton:hover {
     color: #e7e1d6;
@@ -1268,4 +1283,77 @@ QScrollArea#entryDetailScroll,
 QScrollArea#entryDetailScroll > QWidget > QWidget {
     background: transparent;
     border: none;
+}
+QDialog#entryEditDialog {
+    background: #1b1b1a;
+    color: #e7e1d6;
+    font-family: "Apple SD Gothic Neo", "Helvetica Neue";
+}
+QLabel#entryEditTitle {
+    color: #f1ece2;
+    font-size: 22px;
+    font-weight: 800;
+}
+QLabel#entryEditSubtitle,
+QLabel#entryEditStatus {
+    color: #aaa59c;
+    font-size: 12px;
+    font-weight: 700;
+}
+QScrollArea#entryEditScroll,
+QScrollArea#entryEditScroll > QWidget > QWidget {
+    background: transparent;
+    border: none;
+}
+QFrame#entryEditPanel {
+    background: #20201f;
+    border: 1px solid #3f3f3c;
+    border-radius: 14px;
+}
+QLabel#entryEditFormLabel {
+    color: #aaa59c;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 88px;
+}
+QLineEdit#entryEditLineEdit,
+QPlainTextEdit#entryEditTextEdit {
+    background: #242422;
+    color: #e7e1d6;
+    border: 1px solid #454542;
+    border-radius: 10px;
+    padding: 7px 10px;
+    selection-background-color: #e8744f;
+    selection-color: #1b1b1a;
+}
+QLineEdit#entryEditLineEdit:focus,
+QPlainTextEdit#entryEditTextEdit:focus {
+    border-color: #e8744f;
+}
+QFrame#undoToast {
+    background: rgba(36, 36, 34, 218);
+    border: 1px solid rgba(116, 112, 104, 170);
+    border-radius: 16px;
+}
+QLabel#undoToastMessage {
+    color: #f1ece2;
+    font-size: 13px;
+    font-weight: 800;
+}
+QPushButton#undoToastButton {
+    background: transparent;
+    color: #e8744f;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 0 10px;
+    min-height: 28px;
+    max-height: 28px;
+    font-size: 13px;
+    font-weight: 800;
+    text-align: center;
+}
+QPushButton#undoToastButton:hover {
+    background: rgba(232, 116, 79, 35);
+    border-color: rgba(232, 116, 79, 120);
+    color: #f29a78;
 }

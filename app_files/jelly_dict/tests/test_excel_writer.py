@@ -24,6 +24,8 @@ from app.storage.excel_writer import (
     delete_entries_with_backup,
     ensure_workbook,
     find_existing,
+    list_entries,
+    replace_entry,
     save_with_resolver,
     update_or_append,
 )
@@ -253,6 +255,28 @@ def test_atomic_save_preserves_existing_file_mode(tmp_path: Path):
     )
 
     assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+def test_replace_entry_uses_original_key_when_word_changes(tmp_path: Path):
+    path = tmp_path / "vocab.xlsx"
+    append_entry(path, _entry_apple(), EXCEL_COLUMN_KEYS_DEFAULT)
+    edited = _entry_apple()
+    edited.word = "steer"
+    edited.meanings_summary = "조종하다"
+
+    outcome = replace_entry(
+        path,
+        "en",
+        "apple",
+        edited,
+        EXCEL_COLUMN_KEYS_DEFAULT,
+    )
+
+    entries = list_entries(path)
+    assert outcome.action == "overwrite"
+    assert outcome.backup_path is not None
+    assert [entry.word for entry in entries] == ["steer"]
+    assert entries[0].meanings_summary == "조종하다"
 
 
 def test_save_with_resolver_backup_failure_preserves_existing_workbook(

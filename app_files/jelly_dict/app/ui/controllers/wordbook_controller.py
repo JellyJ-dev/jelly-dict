@@ -7,6 +7,7 @@ identical to the previous inline implementation.
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 from PySide6 import QtWidgets
@@ -212,6 +213,65 @@ class WordbookController:
             log.warning("anki delete errors: %s", anki_errors[:5])
             message += " · Anki 일부 실패"
         self._status.showMessage(message)
+        self._show_delete_undo(language, path, delete_outcome.backup_path, keys, removed)
+
+    def _show_delete_undo(
+        self,
+        language: str,
+        path: Path,
+        backup_path: Path | None,
+        keys: set[str],
+        removed: int,
+    ) -> None:
+        if removed <= 0 or backup_path is None:
+            return
+        show_undo_toast = getattr(self._parent, "show_undo_toast", None)
+        if not callable(show_undo_toast):
+            return
+        show_undo_toast(
+            f"{removed}개를 삭제했습니다.",
+            lambda: self._undo_delete(language, path, backup_path, keys, removed),
+        )
+
+    def _undo_delete(
+        self,
+        language: str,
+        path: Path,
+        backup_path: Path,
+        keys: set[str],
+        removed: int,
+    ) -> None:
+        if not backup_path.exists():
+            self._status.showMessage("삭제 되돌리기 실패: 백업 파일을 찾을 수 없습니다.")
+            return
+        try:
+            shutil.copy2(backup_path, path)
+        except OSError as exc:
+            self._status.showMessage(f"삭제 되돌리기 실패: {exc}")
+            return
+
+        self._entries_cache.pop(language, None)
+        self.update_saved_words_cache()
+        self._restore_cache_entries(language, keys)
+        self.show_inline(language, self._current_sort_option)
+        self._status.showMessage(f"{removed}개 삭제를 되돌렸습니다.")
+
+    def _restore_cache_entries(self, language: str, keys: set[str]) -> None:
+        path = Path(self._settings.excel_path_for(language))
+        try:
+            entries = excel_writer.list_entries(path)
+        except Exception as exc:
+            log.warning("cache restore list failed: %s", exc)
+            return
+        for entry in entries:
+            if entry.language != language:
+                continue
+            if normalize_word_key(entry.word, language) not in keys:  # type: ignore[arg-type]
+                continue
+            try:
+                self._cache.upsert(entry)
+            except Exception as exc:
+                log.warning("cache restore upsert failed: %s", exc)
 
     # ---------- recent-entry detail -----------------------------------
 

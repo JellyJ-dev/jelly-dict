@@ -34,8 +34,7 @@ class _ElideLabel(QtWidgets.QLabel):
 
 
 class WordbookRow(QtWidgets.QFrame):
-    requeryRequested = QtCore.Signal(str)
-    copyRequested = QtCore.Signal(str)
+    editRequested = QtCore.Signal(str)
     deleteRequested = QtCore.Signal(str)
 
     def __init__(
@@ -80,21 +79,18 @@ class WordbookRow(QtWidgets.QFrame):
 
         self.action_bar = QtWidgets.QFrame(self)
         self.action_bar.setObjectName("wordbookRowActions")
-        self.action_bar.setFixedSize(148, 28)
+        self.action_bar.setFixedSize(96, 28)
         self.action_bar.setSizePolicy(
             QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed
         )
         action_layout = QtWidgets.QHBoxLayout(self.action_bar)
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(5)
-        self.requery_button = self._action_button("재조회", "wordbookRowActionButton")
-        self.copy_button = self._action_button("복사", "wordbookRowActionButton")
+        self.edit_button = self._action_button("수정", "wordbookRowActionButton")
         self.delete_button = self._action_button("삭제", "wordbookRowDeleteButton")
-        self.requery_button.clicked.connect(lambda: self.requeryRequested.emit(self._word))
-        self.copy_button.clicked.connect(lambda: self.copyRequested.emit(self._word))
+        self.edit_button.clicked.connect(lambda: self.editRequested.emit(self._word))
         self.delete_button.clicked.connect(lambda: self.deleteRequested.emit(self._word))
-        action_layout.addWidget(self.requery_button)
-        action_layout.addWidget(self.copy_button)
+        action_layout.addWidget(self.edit_button)
         action_layout.addWidget(self.delete_button)
         self.action_bar.setVisible(False)
 
@@ -112,8 +108,7 @@ class WordbookRow(QtWidgets.QFrame):
             self._place_action_bar()
             self.action_bar.raise_()
         count_text = f"선택 {selected_count}개" if selected_count > 1 else self._word
-        self.requery_button.setToolTip(f"{count_text} 다시 조회")
-        self.copy_button.setToolTip(f"{count_text} 복사")
+        self.edit_button.setToolTip(f"{self._word} 수정")
         self.delete_button.setToolTip(f"{count_text} 삭제")
 
     def resizeEvent(self, event) -> None:

@@ -50,6 +50,7 @@ __all__ = [
     "backup_workbook",
     "delete_entries",
     "delete_entries_with_backup",
+    "replace_entry",
     "save_with_resolver",
     "list_entries",
     "find_existing",
@@ -234,6 +235,52 @@ def delete_entries_with_backup(
         wb.close()
 
 
+def replace_entry(
+    path: Path,
+    language: str,
+    original_word_key: str,
+    entry: VocabularyEntry,
+    columns: list[str],
+    *,
+    create_backup: bool = True,
+) -> WriteOutcome:
+    """Replace a known workbook row without running duplicate policy."""
+    if not path.exists():
+        append_entry(path, entry, columns)
+        return WriteOutcome("create", entry)
+
+    wb = _load_for_write(path)
+    try:
+        if SHEET_NAME not in wb.sheetnames:
+            ws = wb.create_sheet(SHEET_NAME)
+            _write_header(ws, columns)
+        else:
+            ws = wb[SHEET_NAME]
+
+        file_columns = read_header(ws) or columns
+        if not read_header(ws):
+            _write_header(ws, file_columns)
+
+        target_row = _find_row_by_key(ws, file_columns, language, original_word_key)
+        values = [_render_cell(entry, key) for key in file_columns]
+        backup_path = None
+        if target_row is None:
+            ws.append(values)
+            _style_last_row(ws, file_columns)
+            action = "create"
+        else:
+            if create_backup:
+                backup_path = backup_workbook(path, f"edit-{language}")
+            for col_idx, value in enumerate(values, start=1):
+                ws.cell(row=target_row, column=col_idx, value=value)
+            _style_row(ws, target_row, file_columns)
+            action = "overwrite"
+        _save(wb, path)
+        return WriteOutcome(action, entry, backup_path)
+    finally:
+        wb.close()
+
+
 def save_with_resolver(
     path: Path,
     entry: VocabularyEntry,
@@ -394,17 +441,25 @@ def _style_row(ws, row: int, columns: list[str]) -> None:
 
 
 def _find_row(ws, columns: list[str], entry: VocabularyEntry) -> int | None:
+    return _find_row_by_key(ws, columns, entry.language, entry.word_key())
+
+
+def _find_row_by_key(
+    ws,
+    columns: list[str],
+    language: str,
+    word_key: str,
+) -> int | None:
     if "language" not in columns or "word" not in columns:
         return None
     lang_idx = columns.index("language") + 1
     word_idx = columns.index("word") + 1
 
-    target_key = entry.word_key()
     for row in range(2, ws.max_row + 1):
         lang_val = ws.cell(row=row, column=lang_idx).value
         word_val = ws.cell(row=row, column=word_idx).value
-        if lang_val != entry.language or not isinstance(word_val, str):
+        if lang_val != language or not isinstance(word_val, str):
             continue
-        if normalize_word_key(word_val, entry.language) == target_key:
+        if normalize_word_key(word_val, language) == word_key:
             return row
     return None

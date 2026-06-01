@@ -9,7 +9,6 @@ from uuid import uuid4
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.core import config
-from app.core.duplicate_checker import DuplicateDecision
 from app.core.models import (
     Language,
     VocabularyEntry,
@@ -31,6 +30,7 @@ from app.ui.controllers.export_controller import ExportController
 from app.ui.controllers.wordbook_controller import WordbookController
 from app.ui.developer_tools_dialog import DeveloperToolsDialog
 from app.ui.duplicate_dialog import prompt_duplicate
+from app.ui.entry_edit_dialog import EntryEditDialog
 from app.ui.export_options import status_summary as export_status_summary
 from app.ui.entry_detail_dialog import EntryDetailDialog
 from app.ui.lookup_worker import LookupWorker
@@ -39,9 +39,18 @@ from app.ui.preview_editor_view import PreviewEditorView
 from app.ui.settings_view import SettingsDialog
 from app.ui.startup_perf import StartupPerf
 from app.ui.word_input_view import WordInputView
+from app.ui.widgets.undo_toast import UndoToast
 from app.storage import excel_writer
 
 log = logging.getLogger(__name__)
+
+
+def runtime_status_summary(settings: Settings) -> str:
+    excel_en = Path(settings.excel_path_for("en")).expanduser().name
+    excel_ja = Path(settings.excel_path_for("ja")).expanduser().name
+    provider = "Naver" if settings.provider == "naver_crawler" else "Manual"
+    cache = "cache on" if settings.cache_enabled else "cache off"
+    return f"EN: {excel_en} · JA: {excel_ja} · {provider} · {cache}"
 
 
 class LookupJob:
@@ -172,7 +181,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_view.bulkRetryFailedRequested.connect(self._on_bulk_retry_failed_requested)
         self.input_view.bulkClearFailedRequested.connect(self._on_bulk_clear_failed_requested)
         self.input_view.wordbookSortChanged.connect(self._on_wordbook_sort_changed)
-        self.input_view.wordbookRequeryRequested.connect(self._on_wordbook_requery_requested)
+        self.input_view.wordbookEditRequested.connect(self._edit_wordbook_entry)
         self.input_view.ocrBatchSubmitted.connect(self._on_ocr_batch_submit)
         self.input_view.ocrBulkLookupRequested.connect(self._on_ocr_bulk_submit)
         self.input_view.clearRecentRequested.connect(self._clear_recent)
@@ -221,6 +230,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status = self.statusBar()
         self.status.showMessage("준비됨")
         self._apply_theme()
+        self.undo_toast = UndoToast(central)
 
     def _build_menu(self) -> None:
         menu = self.menuBar()
@@ -235,22 +245,22 @@ class MainWindow(QtWidgets.QMainWindow):
             action_apkg.triggered.connect(lambda _=False, L=lang: self._export_apkg(L))
             file_menu.addAction(action_apkg)
 
-        edit_menu = menu.addMenu("편집")
+        tools_menu = menu.addMenu("도구")
         self.preview_toggle_action = QtGui.QAction("저장 전 미리보기", self)
         self.preview_toggle_action.setCheckable(True)
         self.preview_toggle_action.setChecked(self._settings.show_preview)
         self.preview_toggle_action.toggled.connect(self._on_preview_toggle)
-        edit_menu.addAction(self.preview_toggle_action)
-        edit_menu.addSeparator()
+        tools_menu.addAction(self.preview_toggle_action)
+        tools_menu.addSeparator()
 
         prefs = QtGui.QAction("설정...", self)
         prefs.setShortcut("Ctrl+,")
         prefs.triggered.connect(self._open_settings)
-        edit_menu.addAction(prefs)
+        tools_menu.addAction(prefs)
 
         clear_cache = QtGui.QAction("캐시 비우기", self)
         clear_cache.triggered.connect(self._clear_cache)
-        edit_menu.addAction(clear_cache)
+        tools_menu.addAction(clear_cache)
 
         manage_menu = menu.addMenu("관리")
         manage_en = QtGui.QAction("영어 단어장...", self)
@@ -411,13 +421,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_view.set_lookup_queue(jobs_data)
 
     def _refresh_status_summary(self) -> None:
-        excel_en = Path(self._settings.excel_path_for("en")).expanduser().name
-        excel_ja = Path(self._settings.excel_path_for("ja")).expanduser().name
-        provider = "Naver" if self._settings.provider == "naver_crawler" else "Manual"
-        cache = "cache on" if self._settings.cache_enabled else "cache off"
-        self.input_view.set_status_summary(
-            f"Excel: {excel_en} / {excel_ja}    ·    {provider}    ·    {cache}"
-        )
+        self.input_view.set_status_summary(runtime_status_summary(self._settings))
+
+    def show_undo_toast(self, message: str, undo_callback) -> None:
+        self.undo_toast.show_message(message, undo_callback, duration_ms=3000)
 
     _THEME_PATH = Path(__file__).resolve().parent / "resources" / "theme.qss"
     _RESOURCE_ROOT = Path(__file__).resolve().parents[2] / "resources"
@@ -567,31 +574,6 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(list, str)
     def _on_ocr_bulk_submit(self, tokens: list[str], forced_language: str) -> None:
         self._on_ocr_batch_submit(tokens, forced_language)
-
-    @QtCore.Slot(object, str)
-    def _on_wordbook_requery_requested(self, words_obj: object, forced_language: str) -> None:
-        words = [
-            word.strip()
-            for word in words_obj
-            if isinstance(word, str) and word.strip()
-        ] if isinstance(words_obj, list) else []
-        if not words:
-            return
-        added_count, skipped_count = self._queue_lookup_tokens(
-            words,
-            forced_language,
-            force_refresh=True,
-        )
-        self._refresh_lookup_queue_ui()
-        if added_count > 0:
-            self.status.showMessage(
-                f"{added_count}개 단어를 캐시 없이 다시 조회합니다."
-                + (f" ({skipped_count}개 중복 제외)" if skipped_count else "")
-            )
-            if not self._is_lookup_active():
-                self._start_next_queued_lookup()
-            return
-        self.status.showMessage("다시 조회할 새 단어가 없습니다.")
 
     def _start_lookup(
         self,
@@ -974,6 +956,161 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(str, object)
     def _delete_wordbook_entries(self, language: str, words_obj: object) -> None:
         self._wordbook_ctrl.delete_entries(language, words_obj)
+
+    @QtCore.Slot(str, str)
+    def _edit_wordbook_entry(self, language: str, word: str) -> None:
+        language = language if language in ("en", "ja") else "en"
+        key = normalize_word_key(word, language)  # type: ignore[arg-type]
+        path = Path(self._settings.excel_path_for(language))
+        entry = excel_writer.find_existing(path, language, key)
+        if entry is None:
+            self.status.showMessage("수정할 단어를 찾을 수 없습니다.")
+            return
+
+        dialog = EntryEditDialog(entry, self)
+        state = {"key": key}
+        dialog.requeryRequested.connect(
+            lambda: self._requery_wordbook_edit_dialog(dialog, language, state)
+        )
+        if dialog.exec() != QtWidgets.QDialog.Accepted:
+            return
+        edited = dialog.current_entry()
+        edited.language = language  # type: ignore[assignment]
+        new_key = self._save_wordbook_edit(language, state["key"], edited)
+        if new_key:
+            state["key"] = new_key
+
+    def _save_wordbook_edit(
+        self,
+        language: str,
+        original_key: str,
+        entry: VocabularyEntry,
+        *,
+        create_backup: bool = True,
+    ) -> str | None:
+        if not entry.word.strip():
+            self.status.showMessage("단어는 비울 수 없습니다.")
+            return None
+        path = Path(self._settings.excel_path_for(language))
+        try:
+            outcome = excel_writer.replace_entry(
+                path,
+                language,
+                original_key,
+                entry,
+                self._settings.excel_columns,
+                create_backup=create_backup,
+            )
+        except Exception as exc:
+            log.exception("wordbook edit save failed")
+            QtWidgets.QMessageBox.critical(self, "수정 실패", str(exc))
+            return None
+        try:
+            self._cache.upsert(entry)
+        except Exception as exc:
+            log.warning("cache upsert after wordbook edit failed: %s", exc)
+
+        self._refresh_wordbook_after_mutation(language)
+        message = f"{entry.word} 수정됨"
+        if outcome.backup_path is not None:
+            message += f" · 백업: {outcome.backup_path.name}"
+        self.status.showMessage(message)
+        return normalize_word_key(entry.word, language)  # type: ignore[arg-type]
+
+    def _requery_wordbook_edit_dialog(
+        self,
+        dialog: EntryEditDialog,
+        language: str,
+        state: dict[str, str],
+    ) -> None:
+        current = dialog.current_entry()
+        lookup_word = current.word.strip()
+        if not lookup_word:
+            dialog.show_status("재조회할 단어가 없습니다.")
+            return
+
+        path = Path(self._settings.excel_path_for(language))
+        original_key = state["key"]
+        original_entry = excel_writer.find_existing(path, language, original_key)
+        if original_entry is None:
+            original_entry = current
+
+        dialog.set_busy(True)
+        try:
+            excel_writer.delete_entries_with_backup(path, language, {original_key})
+            try:
+                self._cache.delete_entries(language, {original_key})  # type: ignore[arg-type]
+            except Exception as exc:
+                log.warning("cache delete before requery failed: %s", exc)
+
+            outcome = self._lookup_service.lookup(
+                lookup_word,
+                language,  # type: ignore[arg-type]
+                force_refresh=True,
+            )
+            result = outcome.result
+            if result.ok and result.entry is not None:
+                refreshed = result.entry
+                if result.suggested_word:
+                    refreshed.word = result.suggested_word
+                refreshed.language = language  # type: ignore[assignment]
+                refreshed.id = original_entry.id
+                refreshed.created_at = original_entry.created_at
+                if current.tags:
+                    refreshed.tags = list(current.tags)
+                if current.memo:
+                    refreshed.memo = current.memo
+                refreshed.touch()
+                new_key = self._save_wordbook_edit(
+                    language,
+                    original_key,
+                    refreshed,
+                    create_backup=False,
+                )
+                if new_key:
+                    state["key"] = new_key
+                dialog.set_entry(refreshed)
+                dialog.show_status("재조회 완료 · 단어장에 반영했습니다.")
+                return
+
+            self._restore_wordbook_entry(language, original_key, original_entry)
+            dialog.set_entry(original_entry)
+            dialog.show_status("재조회 결과가 없어 기존 데이터를 복원했습니다.")
+            self.status.showMessage("재조회 결과 없음 · 기존 데이터를 복원했습니다.")
+        except Exception as exc:
+            log.exception("wordbook requery failed")
+            self._restore_wordbook_entry(language, original_key, original_entry)
+            dialog.set_entry(original_entry)
+            dialog.show_status("재조회 실패 · 기존 데이터를 복원했습니다.")
+            self.status.showMessage(f"재조회 실패: {exc}")
+        finally:
+            dialog.set_busy(False)
+
+    def _restore_wordbook_entry(
+        self,
+        language: str,
+        original_key: str,
+        entry: VocabularyEntry,
+    ) -> None:
+        path = Path(self._settings.excel_path_for(language))
+        try:
+            excel_writer.replace_entry(
+                path,
+                language,
+                original_key,
+                entry,
+                self._settings.excel_columns,
+                create_backup=False,
+            )
+            self._cache.upsert(entry)
+            self._refresh_wordbook_after_mutation(language)
+        except Exception as exc:
+            log.warning("wordbook restore after requery failed: %s", exc)
+
+    def _refresh_wordbook_after_mutation(self, language: str) -> None:
+        self._wordbook_ctrl.update_saved_words_cache()
+        self._wordbook_ctrl.show_inline(language, self._wordbook_sort_option)
+        self._refresh_recent()
 
     def _open_word_list_dialog(self, language: str = "en") -> None:
         from app.ui.word_list_view import WordListDialog

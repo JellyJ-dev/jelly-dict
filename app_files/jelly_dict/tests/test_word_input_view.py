@@ -225,11 +225,9 @@ def test_wordbook_tooltip_exposes_metadata_without_visible_badges(qtbot):
 def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
-    requery_seen = []
+    edit_seen = []
     delete_seen = []
-    view.wordbookRequeryRequested.connect(
-        lambda words, lang: requery_seen.append((words, lang))
-    )
+    view.wordbookEditRequested.connect(lambda lang, word: edit_seen.append((lang, word)))
     view.wordbookDeleteRequested.connect(
         lambda lang, words: delete_seen.append((lang, words))
     )
@@ -242,9 +240,8 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
     )
 
     assert not view.wordbook_select_visible_btn.isHidden()
-    assert view.wordbook_requery_btn.isHidden()
-    assert view.wordbook_copy_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
+    assert not hasattr(view, "wordbook_copy_btn")
     first_item = view.recent_list.item(0)
     first_row = view.recent_list.itemWidget(first_item)
     assert isinstance(first_row, WordbookRow)
@@ -255,18 +252,11 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
 
     assert view.wordbook_stats.text() == "2/2개 · 선택 1개"
     assert not view.wordbook_select_visible_btn.isHidden()
-    assert view.wordbook_requery_btn.isHidden()
-    assert view.wordbook_copy_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
-    assert not view.wordbook_requery_btn.isEnabled()
-    assert not view.wordbook_copy_btn.isEnabled()
     assert not first_row.action_bar.isHidden()
 
-    first_row.requery_button.click()
-    assert requery_seen == [(["apple"], "en")]
-
-    first_row.copy_button.click()
-    assert view.status_summary.text() == "선택한 단어 1개 복사됨"
+    first_row.edit_button.click()
+    assert edit_seen == [("en", "apple")]
 
     view.wordbook_select_visible_btn.click()
     second_item = view.recent_list.item(1)
@@ -274,14 +264,12 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
     assert isinstance(second_row, WordbookRow)
 
     assert view.wordbook_stats.text() == "2/2개 · 선택 2개"
-    assert view.wordbook_requery_btn.isHidden()
-    assert view.wordbook_copy_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
     assert not first_row.action_bar.isHidden()
     assert second_row.action_bar.isHidden()
 
-    first_row.requery_button.click()
-    assert requery_seen[-1] == (["apple", "banana"], "en")
+    first_row.edit_button.click()
+    assert edit_seen[-1] == ("en", "apple")
 
     first_row.delete_button.click()
     assert delete_seen == [("en", ["apple", "banana"])]
@@ -295,11 +283,7 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
 def test_wordbook_keyboard_shortcuts_reuse_row_actions_without_header_growth(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
-    requery_seen = []
     delete_seen = []
-    view.wordbookRequeryRequested.connect(
-        lambda words, lang: requery_seen.append((words, lang))
-    )
     view.wordbookDeleteRequested.connect(
         lambda lang, words: delete_seen.append((lang, words))
     )
@@ -322,18 +306,6 @@ def test_wordbook_keyboard_shortcuts_reuse_row_actions_without_header_growth(qtb
 
     QtWidgets.QApplication.sendEvent(
         view.recent_list,
-        _key_event(QtCore.Qt.Key_R, QtCore.Qt.KeyboardModifier.ControlModifier)
-    )
-    assert requery_seen == [(["apple"], "en")]
-
-    QtWidgets.QApplication.sendEvent(
-        view.recent_list,
-        _key_event(QtCore.Qt.Key_R, QtCore.Qt.KeyboardModifier.MetaModifier)
-    )
-    assert requery_seen == [(["apple"], "en"), (["apple"], "en")]
-
-    QtWidgets.QApplication.sendEvent(
-        view.recent_list,
         _key_event(QtCore.Qt.Key_Delete),
     )
     assert delete_seen == [("en", ["apple"])]
@@ -343,8 +315,6 @@ def test_wordbook_keyboard_shortcuts_reuse_row_actions_without_header_growth(qtb
         _key_event(QtCore.Qt.Key_A, QtCore.Qt.KeyboardModifier.ControlModifier)
     )
     assert view.wordbook_stats.text() == "2/2개 · 선택 2개"
-    assert view.wordbook_requery_btn.isHidden()
-    assert view.wordbook_copy_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
 
 
@@ -478,8 +448,6 @@ def test_search_escape_clears_filter_without_header_growth(qtbot):
     assert view.wordbook_search.text() == ""
     assert view.recent_list.count() == 2
     assert view.wordbook_stats.text() == "2/2개"
-    assert view.wordbook_requery_btn.isHidden()
-    assert view.wordbook_copy_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
 
 
@@ -533,8 +501,6 @@ def test_wordbook_selection_keeps_row_size_and_header_actions_stable(qtbot):
 
     assert item.sizeHint() == initial_size
     assert item.sizeHint().height() == 62
-    assert view.wordbook_requery_btn.isHidden()
-    assert view.wordbook_copy_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
 
 
@@ -661,3 +627,14 @@ def test_long_ocr_and_queue_chips_are_elided(qtbot):
     assert "…" in ocr_chip.text()
     assert all("…" in text for text in queue_texts)
     assert long_token in ocr_chip.toolTip()
+
+
+def test_footer_status_summary_has_room_for_language_paths(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+
+    assert view.status_summary.minimumWidth() >= 480
+    assert view.status_summary.maximumWidth() >= 900
+    assert view.status_summary.sizePolicy().horizontalPolicy() == (
+        QtWidgets.QSizePolicy.Expanding
+    )

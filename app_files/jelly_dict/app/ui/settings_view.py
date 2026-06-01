@@ -6,6 +6,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.storage import secret_store
 from app.storage.settings_store import Settings, SettingsStore
+from app.ui.dialog_buttons import configure_footer_button
 
 
 SAMPLE_TEXT_EN = "apple"
@@ -100,13 +101,9 @@ class SettingsDialog(QtWidgets.QDialog):
         save_button = button_box.button(QtWidgets.QDialogButtonBox.Save)
         cancel_button = button_box.button(QtWidgets.QDialogButtonBox.Cancel)
         if save_button is not None:
-            save_button.setText("저장")
-            save_button.setObjectName("settingsPrimaryButton")
-            save_button.setFixedSize(64, 40)
+            configure_footer_button(save_button, role="primary", text="저장")
         if cancel_button is not None:
-            cancel_button.setText("취소")
-            cancel_button.setObjectName("settingsSecondaryButton")
-            cancel_button.setFixedSize(64, 40)
+            configure_footer_button(cancel_button, role="secondary", text="취소")
         button_box.accepted.connect(self._save)
         button_box.rejected.connect(self.reject)
         root.addWidget(button_box, 0, QtCore.Qt.AlignRight)
@@ -1278,11 +1275,9 @@ class _VoicevoxVoicePicker(QtWidgets.QDialog):
         ok_btn = buttons.button(QtWidgets.QDialogButtonBox.Ok)
         cancel_btn = buttons.button(QtWidgets.QDialogButtonBox.Cancel)
         if ok_btn is not None:
-            ok_btn.setText("저장")
-            ok_btn.setObjectName("settingsPrimaryButton")
+            configure_footer_button(ok_btn, role="primary", text="저장")
         if cancel_btn is not None:
-            cancel_btn.setText("취소")
-            cancel_btn.setObjectName("settingsSecondaryButton")
+            configure_footer_button(cancel_btn, role="secondary", text="취소")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
