@@ -211,7 +211,9 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self._startup_perf = StartupPerf()
         self._macos_titlebar_chrome_applied = False
+        self._macos_titlebar_toolbar = None
         self.setWindowTitle("")
+        self.setWindowFlag(QtCore.Qt.WindowType.NoTitleBarBackgroundHint, True)
         self.resize(1180, 820)
         self.setMinimumSize(1020, 700)
 
@@ -293,8 +295,14 @@ class MainWindow(QtWidgets.QMainWindow):
             import ctypes
             import objc
             from AppKit import (
+                NSColor,
+                NSTitlebarSeparatorStyleNone,
+                NSToolbar,
+                NSToolbarDisplayModeIconOnly,
+                NSToolbarSizeModeSmall,
                 NSWindowStyleMaskFullSizeContentView,
                 NSWindowTitleHidden,
+                NSWindowToolbarStyleUnifiedCompact,
             )
 
             ns_view = objc.objc_object(c_void_p=ctypes.c_void_p(int(self.winId())))
@@ -302,11 +310,27 @@ class MainWindow(QtWidgets.QMainWindow):
             if ns_window is None:
                 QtCore.QTimer.singleShot(0, self._apply_macos_titlebar_chrome)
                 return
+            ns_window.setBackgroundColor_(
+                NSColor.colorWithCalibratedRed_green_blue_alpha_(
+                    27 / 255,
+                    27 / 255,
+                    26 / 255,
+                    1,
+                )
+            )
             ns_window.setTitleVisibility_(NSWindowTitleHidden)
             ns_window.setTitlebarAppearsTransparent_(True)
             ns_window.setStyleMask_(
                 ns_window.styleMask() | NSWindowStyleMaskFullSizeContentView
             )
+            ns_window.setTitlebarSeparatorStyle_(NSTitlebarSeparatorStyleNone)
+            toolbar = NSToolbar.alloc().initWithIdentifier_("JellyDictUnifiedTitlebar")
+            toolbar.setShowsBaselineSeparator_(False)
+            toolbar.setDisplayMode_(NSToolbarDisplayModeIconOnly)
+            toolbar.setSizeMode_(NSToolbarSizeModeSmall)
+            ns_window.setToolbar_(toolbar)
+            ns_window.setToolbarStyle_(NSWindowToolbarStyleUnifiedCompact)
+            self._macos_titlebar_toolbar = toolbar
             ns_window.setMovableByWindowBackground_(True)
             self._macos_titlebar_chrome_applied = True
         except Exception as exc:  # pragma: no cover - depends on macOS window server

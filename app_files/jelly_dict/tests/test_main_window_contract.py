@@ -33,8 +33,11 @@ def test_main_window_hides_native_macos_titlebar_chrome():
     assert 'self.setWindowTitle("")' in source
     assert "setTitleVisibility_" in source
     assert "NSWindowTitleHidden" in source
+    assert "NoTitleBarBackgroundHint" in source
     assert "setTitlebarAppearsTransparent_(True)" in source
+    assert "setTitlebarSeparatorStyle_(NSTitlebarSeparatorStyleNone)" in source
     assert "NSWindowStyleMaskFullSizeContentView" in source
+    assert "NSWindowToolbarStyleUnifiedCompact" in source
 
 
 def test_transient_status_bar_auto_hides_messages(qtbot):
