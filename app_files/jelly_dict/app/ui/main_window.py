@@ -39,10 +39,14 @@ from app.ui.preview_editor_view import PreviewEditorView
 from app.ui.settings_view import SettingsDialog
 from app.ui.startup_perf import StartupPerf
 from app.ui.word_input_view import WordInputView
+from app.ui.widgets.pill_scrollbar import install_pill_scrollbars
 from app.ui.widgets.undo_toast import UndoToast
 from app.storage import excel_writer
 
 log = logging.getLogger(__name__)
+LAST_VIEW_STATE_KEY = "ui.last_view_mode"
+WORDBOOK_SORT_STATE_KEY = "ui.wordbook_sort_option"
+WORDBOOK_SORT_OPTIONS = {"최신순", "오래된순", "가나다순"}
 
 
 def runtime_status_summary(settings: Settings) -> str:
@@ -252,7 +256,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._queue_timer.setSingleShot(True)
         self._queue_timer.setInterval(1000)
         self._queue_timer.timeout.connect(self._start_next_queued_lookup)
-        self._wordbook_sort_option = "최신순"
+        self._wordbook_sort_option = self._cached_wordbook_sort_option()
 
         with self._startup_perf.span("build_ui"):
             self._build_ui()
@@ -267,8 +271,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status,
         )
         self._build_menu()
-        with self._startup_perf.span("recent_refresh"):
-            self._refresh_recent()
+        with self._startup_perf.span("initial_view"):
+            self._restore_last_view_mode()
         self._refresh_status_summary()
 
         QtCore.QTimer.singleShot(0, lambda: self._startup_perf.mark("first_paint"))
@@ -284,6 +288,7 @@ class MainWindow(QtWidgets.QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
 
         self.input_view = WordInputView()
+        self.input_view.wordbook_sort_btn.setText(self._wordbook_sort_option)
         self.input_view.submitted.connect(self._on_submit)
         self.input_view.bulkSubmitted.connect(self._on_bulk_submit)
         self.input_view.jobCancelRequested.connect(self._on_job_cancel_requested)
@@ -315,6 +320,7 @@ class MainWindow(QtWidgets.QMainWindow):
         input_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         input_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         input_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        install_pill_scrollbars(input_scroll, horizontal=False)
         input_scroll.setWidget(self.input_view)
 
         self.preview_view = PreviewEditorView()
@@ -326,6 +332,7 @@ class MainWindow(QtWidgets.QMainWindow):
         preview_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         preview_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         preview_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        install_pill_scrollbars(preview_scroll)
         preview_scroll.setWidget(self.preview_view)
 
         self.stack = QtWidgets.QStackedLayout()
@@ -441,7 +448,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_saved_words_cache_ready(self, saved_words: object) -> None:
         if isinstance(saved_words, set):
             self._wordbook_ctrl.set_saved_words_cache(saved_words)
-            self._refresh_recent()
+            if self.input_view._list_mode == "recent":
+                self._refresh_recent(remember=False)
             self._startup_perf.mark("saved_words_cache", start=self._saved_words_started)
         self._saved_words_started = None
 
@@ -487,6 +495,25 @@ class MainWindow(QtWidgets.QMainWindow):
             return crawler
         return ManualDictionaryProvider()
 
+    def _cached_wordbook_sort_option(self) -> str:
+        option = self._cache.get_state(WORDBOOK_SORT_STATE_KEY)
+        return option if option in WORDBOOK_SORT_OPTIONS else "최신순"
+
+    def _restore_last_view_mode(self) -> None:
+        mode = self._cache.get_state(LAST_VIEW_STATE_KEY)
+        if mode in ("en", "ja"):
+            self._show_wordbook_inline(mode, remember=False)
+            return
+        self._refresh_recent(remember=False)
+
+    def _remember_last_view_mode(self, mode: str) -> None:
+        if mode in ("recent", "en", "ja"):
+            self._cache.set_state(LAST_VIEW_STATE_KEY, mode)
+
+    def _remember_wordbook_sort_option(self, option: str) -> None:
+        if option in WORDBOOK_SORT_OPTIONS:
+            self._cache.set_state(WORDBOOK_SORT_STATE_KEY, option)
+
     def _build_ocr_provider(self) -> OcrProvider:
         try:
             return build_ocr_provider(self._settings.ocr_provider, self._settings)
@@ -499,7 +526,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ocr_provider = self._build_ocr_provider()
         self.input_view.set_ocr_provider_label(name)
 
-    def _refresh_recent(self) -> None:
+    def _refresh_recent(self, *, remember: bool = False) -> None:
         items: list[tuple[str, str, str, str]] = []
         seen: set[tuple[str, str]] = set()
         # Single-query JOIN: avoids N+1 round-trips per refresh.
@@ -510,18 +537,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 hint = first_meaning_hint(cached)
                 if cached.word:
                     display = cached.word
+            is_saved = self._wordbook_ctrl.is_word_saved(display, lang)
+            if cached is None and not is_saved:
+                continue
             dedup_key = (lang, display.lower())
             if dedup_key in seen:
                 continue
             seen.add(dedup_key)
 
-            is_saved = self._wordbook_ctrl.is_word_saved(display, lang)
             status = "saved" if is_saved else "recent"
 
             items.append((display, lang, hint, status))
             if len(items) >= 20:
                 break
         self.input_view.set_recent(items)
+        if remember:
+            self._remember_last_view_mode("recent")
+
+    def _refresh_recent_if_visible(self) -> None:
+        if self.input_view._list_mode == "recent":
+            self._refresh_recent(remember=False)
 
     def _refresh_lookup_queue_ui(self) -> None:
         jobs_data = []
@@ -752,7 +787,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self._lookup_queue_total = 0
                 self.status.showMessage("모든 조회가 완료되었습니다.")
-            self._refresh_recent()
+            self._refresh_recent_if_visible()
             self._refresh_lookup_queue_ui()
             return
 
@@ -763,7 +798,7 @@ class MainWindow(QtWidgets.QMainWindow):
         pending_count = sum(1 for j in self._lookup_queue if j.status == "pending")
         index = max(1, self._lookup_queue_total - pending_count)
         self.status.showMessage(f"순차 조회 {index}/{self._lookup_queue_total}: {job.word}")
-        self._refresh_recent()
+        self._refresh_recent_if_visible()
         self._refresh_lookup_queue_ui()
         self._start_lookup(
             job.word,
@@ -784,7 +819,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._lookup_queue_total = 0
                 self.status.showMessage("모든 조회가 완료되었습니다.")
             self.input_view.set_lookup_busy(False)
-            self._refresh_recent()
+            self._refresh_recent_if_visible()
             return
 
         self._queue_timer.stop()
@@ -803,7 +838,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._lookup_queue = []
         self._lookup_queue_total = 0
         self.input_view.set_lookup_busy(False)
-        self._refresh_recent()
+        self._refresh_recent_if_visible()
         self._refresh_lookup_queue_ui()
 
     @QtCore.Slot(object)
@@ -895,7 +930,7 @@ class MainWindow(QtWidgets.QMainWindow):
             message += f" · 백업: {outcome.backup_path}"
         self.status.showMessage(message)
         self._return_to_input()
-        self._refresh_recent()
+        self._refresh_recent(remember=True)
         self._schedule_next_queued_lookup()
 
     def _return_to_input(self) -> None:
@@ -983,9 +1018,11 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(str)
     def _on_wordbook_sort_changed(self, option: str) -> None:
         self._wordbook_sort_option = option
+        self._remember_wordbook_sort_option(option)
         current_mode = self.input_view._list_mode
         if current_mode in ("en", "ja"):
             self._wordbook_ctrl.show_inline(current_mode, option)
+            self._remember_last_view_mode(current_mode)
 
     @QtCore.Slot(str)
     def _on_ambiguous(self, word: str) -> None:
@@ -1054,15 +1091,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _open_word_list(self, language: str = "en") -> None:
         if language == "recent":
-            self._refresh_recent()
+            self._refresh_recent(remember=True)
             return
         self._show_wordbook_inline(language)
 
-    def _show_wordbook_inline(self, language: str) -> None:
+    def _show_wordbook_inline(self, language: str, *, remember: bool = True) -> None:
         self._wordbook_ctrl.show_inline(language, self._wordbook_sort_option)
         self.input_view.set_anki_export_status(
             export_status_summary(self._settings, language)
         )
+        if remember:
+            self._remember_last_view_mode(language)
 
     @QtCore.Slot(str, object)
     def _delete_wordbook_entries(self, language: str, words_obj: object) -> None:
@@ -1221,7 +1260,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_wordbook_after_mutation(self, language: str) -> None:
         self._wordbook_ctrl.update_saved_words_cache()
         self._wordbook_ctrl.show_inline(language, self._wordbook_sort_option)
-        self._refresh_recent()
+        self._remember_last_view_mode(language)
 
     def _open_word_list_dialog(self, language: str = "en") -> None:
         from app.ui.word_list_view import WordListDialog
@@ -1235,7 +1274,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         dlg.deleted.connect(self._on_words_deleted)
         dlg.exec()
-        self._refresh_recent()
+        self._refresh_recent_if_visible()
 
     @QtCore.Slot(str, str)
     def _open_recent_entry_detail(self, word: str, language: str) -> None:
@@ -1248,11 +1287,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self._cache.delete_entries(language, word_keys)  # type: ignore[arg-type]
         except Exception as exc:
             log.warning("cache delete failed: %s", exc)
+        try:
+            delete_recent = getattr(self._cache, "delete_recent_entries", None)
+            if callable(delete_recent):
+                delete_recent(language, word_keys)  # type: ignore[arg-type]
+        except Exception as exc:
+            log.warning("recent cache delete failed: %s", exc)
 
     @QtCore.Slot(str, int)
     def _on_words_deleted(self, language: str, count: int) -> None:
         self._start_saved_words_cache_load()
-        self._refresh_recent()
+        self._refresh_recent_if_visible()
         self.status.showMessage(f"{language} {count}개 삭제됨 (Excel)")
 
     def _confirm_suggestion(
@@ -1281,7 +1326,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log.warning("clear recent failed: %s", exc)
             self.status.showMessage("최근 단어 목록 지우기 실패")
             return
-        self._refresh_recent()
+        self._refresh_recent(remember=True)
         self.status.showMessage("최근 단어 목록을 지웠습니다 (Excel/캐시는 유지)")
 
     def _open_developer_tools(self) -> None:

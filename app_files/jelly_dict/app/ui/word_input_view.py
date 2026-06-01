@@ -8,6 +8,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.widgets.anki_export_button import AnkiExportButton
 from app.ui.widgets.language_menu_item import LanguageMenuItem
+from app.ui.widgets.pill_scrollbar import PillScrollBar
 from app.ui.widgets.wordbook_items import (
     WordbookDisplayItem,
     WordbookItem,
@@ -193,8 +194,45 @@ class WordbookListWidget(QtWidgets.QListWidget):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._wheel_remainder = 0.0
+        self._pending_deselect_item: QtWidgets.QListWidgetItem | None = None
+        self._deselect_timer = QtCore.QTimer(self)
+        self._deselect_timer.setSingleShot(True)
+        self._deselect_timer.timeout.connect(self._apply_pending_deselect)
         self.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self.setVerticalScrollBar(PillScrollBar(QtCore.Qt.Vertical, self))
         self.verticalScrollBar().setSingleStep(16)
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        self._cancel_pending_deselect()
+        if (
+            event.button() == QtCore.Qt.LeftButton
+            and self.selectionMode() == QtWidgets.QAbstractItemView.ExtendedSelection
+            and self._is_plain_click(event)
+        ):
+            item = self.itemAt(event.position().toPoint())
+            if item is not None and item.isSelected():
+                self._pending_deselect_item = item
+                interval = QtWidgets.QApplication.doubleClickInterval() + 40
+                self._deselect_timer.start(interval)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        self._cancel_pending_deselect()
+        if (
+            event.button() == QtCore.Qt.LeftButton
+            and self.selectionMode() == QtWidgets.QAbstractItemView.ExtendedSelection
+            and self._is_plain_click(event)
+        ):
+            item = self.itemAt(event.position().toPoint())
+            if item is not None and item.flags() & QtCore.Qt.ItemIsSelectable:
+                self.setCurrentItem(item)
+                item.setSelected(True)
+                self.itemDoubleClicked.emit(item)
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
 
     def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
         bar = self.verticalScrollBar()
@@ -220,6 +258,21 @@ class WordbookListWidget(QtWidgets.QListWidget):
             return
         self._wheel_remainder -= whole_delta
         bar.setValue(bar.value() - whole_delta)
+
+    def _is_plain_click(self, event: QtGui.QMouseEvent) -> bool:
+        modifiers = event.modifiers() & ~QtCore.Qt.KeyboardModifier.KeypadModifier
+        return modifiers == QtCore.Qt.KeyboardModifier.NoModifier
+
+    def _cancel_pending_deselect(self) -> None:
+        self._deselect_timer.stop()
+        self._pending_deselect_item = None
+
+    def _apply_pending_deselect(self) -> None:
+        item = self._pending_deselect_item
+        self._pending_deselect_item = None
+        if item is None or self.row(item) < 0 or not item.isSelected():
+            return
+        item.setSelected(False)
 
 
 class WordInputView(QtWidgets.QWidget):
@@ -975,12 +1028,11 @@ class WordInputView(QtWidgets.QWidget):
         self._list_mode = "recent"
         self._recent_items = list(display_items)
         self._wordbook_items = []
-        self._wordbook_expanded = False
-        self.top_area.setVisible(True)
-        self.top_area.setMaximumHeight(16777215)
+        self.top_area.setVisible(not self._wordbook_expanded)
+        self.top_area.setMaximumHeight(0 if self._wordbook_expanded else 16777215)
         self._apply_wordbook_chrome_state()
         self.recent_title_btn.setText("최근 단어")
-        self.wordbook_expand_btn.setVisible(False)
+        self.wordbook_expand_btn.setVisible(True)
         self.wordbook_sort_btn.setVisible(False)
         self.wordbook_stats.setVisible(False)
         self.clear_recent_btn.setVisible(True)
@@ -995,7 +1047,7 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_search.setPlaceholderText("최근 단어 검색...")
         self.wordbook_search.setVisible(bool(display_items))
         self.wordbook_search.setMaximumHeight(16777215)
-        self.recent_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.recent_list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.recent_list.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         self.recent_list.setMinimumHeight(NORMAL_LIST_HEIGHT)
         self.recent_list.setMaximumHeight(16777215)
@@ -1040,6 +1092,7 @@ class WordInputView(QtWidgets.QWidget):
                 label += f"  —  {hint}"
             display_label = _elide(label, 58)
             qt_item = QtWidgets.QListWidgetItem(label)
+            qt_item.setFlags(QtCore.Qt.ItemIsEnabled)
             qt_item.setText(display_label)
             qt_item.setData(QtCore.Qt.UserRole, (word, language))
             qt_item.setToolTip(label)
@@ -1266,17 +1319,17 @@ class WordInputView(QtWidgets.QWidget):
         self.recent_list.addItem(item)
 
     def _toggle_wordbook_expanded(self) -> None:
-        if self._list_mode not in ("en", "ja"):
+        if self._list_mode not in ("recent", "en", "ja"):
             return
         self._wordbook_expanded = not self._wordbook_expanded
         self._apply_wordbook_chrome_state()
         self._animate_wordbook_layout()
 
     def _apply_wordbook_chrome_state(self) -> None:
-        expanded = self._wordbook_expanded and self._list_mode in ("en", "ja")
+        expanded = self._wordbook_expanded and self._list_mode in ("recent", "en", "ja")
         self.wordbook_expand_btn.setText("축소" if expanded else "확대")
         self.wordbook_expand_btn.setToolTip(
-            "입력 영역 보이기" if expanded else "단어장 크게 보기"
+            "입력 영역 보이기" if expanded else "목록 크게 보기"
         )
         self.recent_panel.setProperty("expanded", expanded)
         self.recent_panel.setSizePolicy(
@@ -1298,6 +1351,8 @@ class WordInputView(QtWidgets.QWidget):
         _repolish(self.recent_panel)
 
     def _animate_wordbook_layout(self) -> None:
+        if self._list_mode not in ("recent", "en", "ja"):
+            return
         if self._top_height_animation is not None:
             self._top_height_animation.stop()
 
@@ -1321,7 +1376,9 @@ class WordInputView(QtWidgets.QWidget):
         self._top_height_animation.finished.connect(self._finish_top_animation)
         self._top_height_animation.start()
 
-        self.wordbook_search.setVisible(True)
+        self.wordbook_search.setVisible(
+            self._list_mode in ("en", "ja") or bool(self._recent_items)
+        )
         self.wordbook_search.setMaximumHeight(16777215)
 
     def _finish_top_animation(self) -> None:
@@ -1543,13 +1600,13 @@ class WordInputView(QtWidgets.QWidget):
     def _first_selectable_list_item(self) -> QtWidgets.QListWidgetItem | None:
         for index in range(self.recent_list.count()):
             item = self.recent_list.item(index)
-            if item.flags() & QtCore.Qt.ItemIsSelectable:
+            if self._is_openable_list_item(item):
                 return item
         return None
 
     def _current_or_first_selectable_list_item(self) -> QtWidgets.QListWidgetItem | None:
         current = self.recent_list.currentItem()
-        if current is not None and current.flags() & QtCore.Qt.ItemIsSelectable:
+        if current is not None and self._is_openable_list_item(current):
             return current
         return self._first_selectable_list_item()
 
@@ -1558,12 +1615,15 @@ class WordInputView(QtWidgets.QWidget):
             return False
         self.recent_list.setFocus(QtCore.Qt.OtherFocusReason)
         self.recent_list.setCurrentItem(item)
-        if not item.isSelected():
-            if self._list_mode == "recent":
-                self.recent_list.clearSelection()
+        if self._list_mode != "recent" and not item.isSelected():
             item.setSelected(True)
         self._on_list_selection_changed()
         return True
+
+    def _is_openable_list_item(self, item: QtWidgets.QListWidgetItem) -> bool:
+        if self._list_mode == "recent":
+            return bool(item.flags() & QtCore.Qt.ItemIsEnabled)
+        return bool(item.flags() & QtCore.Qt.ItemIsSelectable)
 
     def _open_current_or_first_list_item(self) -> bool:
         return self._open_list_item(self._current_or_first_selectable_list_item())

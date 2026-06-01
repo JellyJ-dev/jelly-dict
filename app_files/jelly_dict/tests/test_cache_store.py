@@ -73,6 +73,28 @@ def test_delete_entries_no_keys_is_noop(isolated_runtime):
     assert cache.get("apple", "en") is not None
 
 
+def test_app_state_round_trip(isolated_runtime):
+    cache = CacheStore()
+
+    cache.set_state("ui.last_view_mode", "ja")
+
+    assert cache.get_state("ui.last_view_mode") == "ja"
+    assert cache.get_state("missing") is None
+
+
+def test_delete_recent_entries_targets_word_or_entry_word(isolated_runtime):
+    cache = CacheStore()
+    cache.remember_lookup("apple", "en", entry_word="Apple")
+    cache.remember_lookup("banana", "en", entry_word="banana")
+    cache.remember_lookup("蘇る", "ja", entry_word="蘇る·甦る")
+
+    assert cache.delete_recent_entries("en", {"Apple"}) == 1
+    assert cache.delete_recent_entries("ja", {"蘇る·甦る"}) == 1
+
+    recent = cache.recent(limit=10)
+    assert [(lang, word) for lang, word, *_ in recent] == [("en", "banana")]
+
+
 def test_recent_with_entries_returns_cached_payload(isolated_runtime):
     cache = CacheStore()
     entry = VocabularyEntry(language="en", word="apple")

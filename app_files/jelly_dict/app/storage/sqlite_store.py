@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS recent_lookups (
 
 CREATE INDEX IF NOT EXISTS idx_recent_time ON recent_lookups(looked_up_at);
 CREATE INDEX IF NOT EXISTS idx_recent_lang_word ON recent_lookups(language, word);
+
+CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 

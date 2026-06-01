@@ -85,18 +85,18 @@ QDoubleSpinBox:focus {
 QScrollBar:vertical {
     background: transparent;
     border: none;
-    border-radius: 8px;
-    width: 14px;
-    margin: 8px 4px 8px 4px;
+    width: 12px;
+    margin: 10px 3px 10px 3px;
 }
 QScrollBar::handle:vertical {
-    background: #454542;
-    border: 2px solid transparent;
-    border-radius: 7px;
+    background: rgba(106, 105, 99, 148);
+    border: none;
+    border-radius: 4px;
+    margin: 0 1px 0 1px;
     min-height: 44px;
 }
 QScrollBar::handle:vertical:hover {
-    background: #6a6963;
+    background: rgba(148, 145, 136, 180);
 }
 QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical {
@@ -111,18 +111,18 @@ QScrollBar::sub-page:vertical {
 QScrollBar:horizontal {
     background: transparent;
     border: none;
-    border-radius: 8px;
-    height: 14px;
-    margin: 4px 8px 4px 8px;
+    height: 12px;
+    margin: 3px 10px 3px 10px;
 }
 QScrollBar::handle:horizontal {
-    background: #454542;
-    border: 2px solid transparent;
-    border-radius: 7px;
+    background: rgba(106, 105, 99, 148);
+    border: none;
+    border-radius: 4px;
+    margin: 1px 0 1px 0;
     min-width: 44px;
 }
 QScrollBar::handle:horizontal:hover {
-    background: #6a6963;
+    background: rgba(148, 145, 136, 180);
 }
 QScrollBar::add-line:horizontal,
 QScrollBar::sub-line:horizontal {
@@ -942,18 +942,18 @@ QScrollArea#settingsScroll {
 QDialog#settingsDialog QScrollBar:vertical {
     background: transparent;
     border: none;
-    border-radius: 8px;
-    width: 14px;
-    margin: 8px 4px 8px 4px;
+    width: 12px;
+    margin: 10px 3px 10px 3px;
 }
 QDialog#settingsDialog QScrollBar::handle:vertical {
-    background: #454542;
-    border: 2px solid transparent;
-    border-radius: 7px;
+    background: rgba(106, 105, 99, 148);
+    border: none;
+    border-radius: 4px;
+    margin: 0 1px 0 1px;
     min-height: 44px;
 }
 QDialog#settingsDialog QScrollBar::handle:vertical:hover {
-    background: #6a6963;
+    background: rgba(148, 145, 136, 180);
 }
 QDialog#settingsDialog QScrollBar::add-line:vertical,
 QDialog#settingsDialog QScrollBar::sub-line:vertical {

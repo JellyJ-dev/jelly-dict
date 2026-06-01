@@ -33,10 +33,14 @@ class _StatusBar:
 class _Cache:
     def __init__(self) -> None:
         self.deleted = []
+        self.recent_deleted = []
         self.upserted = []
 
     def delete_entries(self, language, keys):
         self.deleted.append((language, set(keys)))
+
+    def delete_recent_entries(self, language, keys):
+        self.recent_deleted.append((language, set(keys)))
 
     def upsert(self, entry):
         self.upserted.append(entry.word)
@@ -125,6 +129,8 @@ def test_wordbook_controller_delete_shows_undo_toast_and_restores_backup(
 
     controller.delete_entries("en", ["apple"])
 
+    assert cache.deleted == [("en", {"apple"})]
+    assert cache.recent_deleted == [("en", {"apple"})]
     assert parent.toast_message == "1개를 삭제했습니다."
     assert excel_writer.list_entries(path) == []
     assert callable(parent.undo_callback)

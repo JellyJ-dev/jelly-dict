@@ -27,6 +27,26 @@ def _key_event(
     return QtGui.QKeyEvent(QtCore.QEvent.KeyPress, key, modifiers)
 
 
+def _mouse_press_event(pos: QtCore.QPoint) -> QtGui.QMouseEvent:
+    return QtGui.QMouseEvent(
+        QtCore.QEvent.MouseButtonPress,
+        QtCore.QPointF(pos),
+        QtCore.Qt.MouseButton.LeftButton,
+        QtCore.Qt.MouseButton.LeftButton,
+        QtCore.Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def _mouse_double_click_event(pos: QtCore.QPoint) -> QtGui.QMouseEvent:
+    return QtGui.QMouseEvent(
+        QtCore.QEvent.MouseButtonDblClick,
+        QtCore.QPointF(pos),
+        QtCore.Qt.MouseButton.LeftButton,
+        QtCore.Qt.MouseButton.LeftButton,
+        QtCore.Qt.KeyboardModifier.NoModifier,
+    )
+
+
 def test_recent_empty_state_disables_clear_action(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
@@ -47,9 +67,11 @@ def test_recent_items_enable_clear_action(qtbot):
 
     assert view.recent_list.count() == 1
     assert view.recent_list.item(0).text() == "[en] apple  —  사과"
-    assert _is_selectable(view.recent_list.item(0))
+    assert not _is_selectable(view.recent_list.item(0))
+    assert view.recent_list.selectionMode() == QtWidgets.QAbstractItemView.NoSelection
     assert view.clear_recent_btn.isEnabled()
     assert not view.wordbook_search.isHidden()
+    assert not view.wordbook_expand_btn.isHidden()
 
 
 def test_recent_search_filters_items_without_disabling_clear(qtbot):
@@ -506,6 +528,72 @@ def test_wordbook_selection_keeps_row_size_and_header_actions_stable(qtbot):
     assert view.wordbook_delete_btn.isHidden()
 
 
+def test_wordbook_plain_click_on_selected_row_deselects_it(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.resize(1000, 760)
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+    view.recent_list.resize(760, 260)
+    view.recent_list.viewport().resize(760, 260)
+    view.recent_list.doItemsLayout()
+    item = view.recent_list.item(0)
+    view.recent_list.setCurrentItem(item)
+    item.setSelected(True)
+    view._on_list_selection_changed()
+
+    assert item.isSelected()
+    assert view.wordbook_stats.text() == "2개 · 선택 1개"
+
+    rect = view.recent_list.visualItemRect(item)
+    view.recent_list.mousePressEvent(_mouse_press_event(rect.center()))
+
+    assert item.isSelected()
+    assert view.wordbook_stats.text() == "2개 · 선택 1개"
+
+    qtbot.waitUntil(lambda: not item.isSelected(), timeout=1000)
+    assert not item.isSelected()
+    assert view.wordbook_stats.text() == "2개"
+
+
+def test_wordbook_double_click_cancels_pending_deselect(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.resize(1000, 760)
+    view.set_wordbook(
+        "en",
+        [
+            ("apple", "en", "", "사과"),
+            ("banana", "en", "", "바나나"),
+        ],
+    )
+    opened = []
+    view.recentEntryRequested.connect(lambda word, lang: opened.append((word, lang)))
+    view.recent_list.resize(760, 260)
+    view.recent_list.viewport().resize(760, 260)
+    view.recent_list.doItemsLayout()
+    item = view.recent_list.item(0)
+    view.recent_list.setCurrentItem(item)
+    item.setSelected(True)
+    view._on_list_selection_changed()
+    rect = view.recent_list.visualItemRect(item)
+
+    view.recent_list.mousePressEvent(_mouse_press_event(rect.center()))
+    assert view.recent_list._deselect_timer.isActive()
+
+    view.recent_list.mouseDoubleClickEvent(_mouse_double_click_event(rect.center()))
+    qtbot.wait(QtWidgets.QApplication.doubleClickInterval() + 80)
+
+    assert item.isSelected()
+    assert not view.recent_list._deselect_timer.isActive()
+    assert opened == [("apple", "en")]
+
+
 def test_wordbook_row_actions_align_to_card_edge_when_visible(qtbot):
     row = WordbookRow("en", "characteristically", "", "특징적으로")
     qtbot.addWidget(row)
@@ -531,6 +619,24 @@ def test_wordbook_expand_switches_to_real_wide_panel_mode(qtbot):
     assert view.recent_panel.property("expanded") is True
     assert view.recent_panel.maximumWidth() > 980
     assert view._root_layout.contentsMargins().left() == 36
+
+
+def test_recent_expand_uses_same_wide_panel_without_changing_row_format(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+    view.set_recent([("apple", "en", "사과", "recent")])
+
+    assert view.wordbook_expand_btn.text() == "확대"
+    assert not view.wordbook_expand_btn.isHidden()
+    assert view.recent_list.item(0).text() == "[en] apple  —  사과"
+
+    view._toggle_wordbook_expanded()
+
+    assert view.wordbook_expand_btn.text() == "축소"
+    assert view.recent_panel.property("expanded") is True
+    assert view.recent_panel.maximumWidth() > 980
+    assert view.recent_list.item(0).text() == "[en] apple  —  사과"
+    assert view.recent_list.selectionMode() == QtWidgets.QAbstractItemView.NoSelection
 
 
 def test_switching_from_recent_to_wordbook_resets_search_context(qtbot):

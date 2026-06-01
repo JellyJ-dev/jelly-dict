@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from app.storage import secret_store
 from app.storage.settings_store import Settings, SettingsStore
 from app.ui.dialog_buttons import configure_footer_button
+from app.ui.widgets.pill_scrollbar import install_pill_scrollbars
 
 
 SAMPLE_TEXT_EN = "apple"
@@ -128,6 +129,7 @@ class SettingsDialog(QtWidgets.QDialog):
         scroll.setWidgetResizable(True)
         scroll.setObjectName("settingsScroll")
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        install_pill_scrollbars(scroll, horizontal=False)
         panel = QtWidgets.QFrame()
         panel.setObjectName("settingsPanel")
         panel.setAttribute(QtCore.Qt.WA_StyledBackground, True)

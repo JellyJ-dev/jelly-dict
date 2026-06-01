@@ -171,6 +171,12 @@ class WordbookController:
             self._cache.delete_entries(language, keys)  # type: ignore[arg-type]
         except Exception as exc:
             log.warning("cache delete failed: %s", exc)
+        try:
+            delete_recent = getattr(self._cache, "delete_recent_entries", None)
+            if callable(delete_recent):
+                delete_recent(language, keys)
+        except Exception as exc:
+            log.warning("recent delete failed: %s", exc)
 
         anki_removed = 0
         anki_errors: list[str] = []

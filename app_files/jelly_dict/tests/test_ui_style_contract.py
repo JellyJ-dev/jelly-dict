@@ -66,13 +66,14 @@ def test_scrollbars_use_rounded_pill_contract():
     settings_scrollbar = _qss_block(qss, "QDialog#settingsDialog QScrollBar:vertical")
     settings_handle = _qss_block(qss, "QDialog#settingsDialog QScrollBar::handle:vertical")
 
-    assert "width: 14px;" in scrollbar
-    assert "border-radius: 8px;" in scrollbar
-    assert "border: 2px solid transparent;" in handle
-    assert "border-radius: 7px;" in handle
+    assert "width: 12px;" in scrollbar
+    assert "margin: 10px 3px 10px 3px;" in scrollbar
+    assert "border: none;" in handle
+    assert "border-radius: 4px;" in handle
+    assert "margin: 0 1px 0 1px;" in handle
     assert "background: transparent;" in settings_scrollbar
-    assert "border-radius: 8px;" in settings_scrollbar
-    assert "border-radius: 7px;" in settings_handle
+    assert "width: 12px;" in settings_scrollbar
+    assert "border-radius: 4px;" in settings_handle
 
 
 def test_delete_undo_toast_uses_compact_translucent_contract():

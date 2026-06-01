@@ -95,6 +95,35 @@ class CacheStore:
             raise CacheError(str(exc)) from exc
         return len(keys)
 
+    def delete_recent_entries(self, language: Language, word_keys: Iterable[str]) -> int:
+        keys = {normalize_word_key(k, language) for k in word_keys if k}
+        if not keys:
+            return 0
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT id, word, entry_word FROM recent_lookups WHERE language=?",
+                    (language,),
+                ).fetchall()
+                ids = [
+                    row["id"]
+                    for row in rows
+                    if normalize_word_key(row["word"], language) in keys
+                    or (
+                        row["entry_word"]
+                        and normalize_word_key(row["entry_word"], language) in keys
+                    )
+                ]
+                if ids:
+                    conn.executemany(
+                        "DELETE FROM recent_lookups WHERE id=?",
+                        [(row_id,) for row_id in ids],
+                    )
+        except Exception as exc:
+            log.warning("recent delete failed: %s", exc)
+            raise CacheError(str(exc)) from exc
+        return len(ids)
+
     def clear_recent(self) -> None:
         """Wipe the recent_lookups list without touching the entry cache."""
         try:
@@ -102,6 +131,40 @@ class CacheStore:
                 conn.execute("DELETE FROM recent_lookups")
         except Exception as exc:
             raise CacheError(str(exc)) from exc
+
+    def set_state(self, key: str, value: str) -> None:
+        key = (key or "").strip()
+        if not key:
+            return
+        try:
+            with self._conn() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO app_state(key, value, updated_at)
+                    VALUES(?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (key, value, _now()),
+                )
+        except Exception as exc:
+            log.warning("cache state set failed: %s", exc)
+
+    def get_state(self, key: str) -> str | None:
+        key = (key or "").strip()
+        if not key:
+            return None
+        try:
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT value FROM app_state WHERE key=?",
+                    (key,),
+                ).fetchone()
+        except Exception as exc:
+            log.warning("cache state get failed: %s", exc)
+            return None
+        return str(row["value"]) if row else None
 
     def remember_lookup(
         self,
