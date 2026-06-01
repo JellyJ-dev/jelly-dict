@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from PySide6 import QtCore, QtWidgets
 
 from app.core.models import VocabularyEntry, build_meanings_summary, collect_examples_flat
+from app.ui.dialog_shortcuts import install_standard_close_shortcut
 
 
 class EntryDetailDialog(QtWidgets.QDialog):
@@ -17,6 +18,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
         self.resize(820, 760)
         self.setMinimumSize(640, 560)
         self._build_ui()
+        install_standard_close_shortcut(self)
 
     def _build_ui(self) -> None:
         layout = QtWidgets.QVBoxLayout(self)

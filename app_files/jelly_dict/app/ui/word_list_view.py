@@ -8,6 +8,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from app.core.models import VocabularyEntry, normalize_word_key
 from app.services.anki_sync_service import AnkiSyncService
 from app.storage import excel_writer
+from app.ui.dialog_shortcuts import install_standard_close_shortcut
 
 
 class WordListDialog(QtWidgets.QDialog):
@@ -31,6 +32,7 @@ class WordListDialog(QtWidgets.QDialog):
         self._excel_path_for = excel_path_for
         self._cache_clear = cache_clear
         self._anki_sync = anki_sync
+        install_standard_close_shortcut(self)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 20)

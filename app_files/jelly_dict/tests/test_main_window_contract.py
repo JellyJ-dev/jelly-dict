@@ -59,6 +59,15 @@ def test_recent_clear_uses_undo_toast_contract():
     assert "self._restore_recent(snapshot, removed)" in source
 
 
+def test_main_window_close_shortcut_hides_instead_of_closing():
+    source = MAIN_WINDOW.read_text(encoding="utf-8")
+
+    assert "QKeySequence.StandardKey.Close" in source
+    assert "self.close_shortcut.activated.connect(self.hide)" in source
+    assert "self.close_shortcut.activated.connect(self.showMinimized)" not in source
+    assert "self.close_shortcut.activated.connect(self.close)" not in source
+
+
 def test_transient_status_bar_auto_hides_messages(qtbot):
     parent = QtWidgets.QWidget()
     parent.resize(640, 480)

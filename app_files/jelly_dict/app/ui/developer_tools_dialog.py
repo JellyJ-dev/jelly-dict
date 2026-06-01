@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.core import config
 from app.storage.settings_store import Settings, SettingsStore
+from app.ui.dialog_shortcuts import install_standard_close_shortcut
 
 
 class DeveloperToolsDialog(QtWidgets.QDialog):
@@ -19,6 +20,7 @@ class DeveloperToolsDialog(QtWidgets.QDialog):
         self.setWindowTitle("개발자 도구")
         self.resize(820, 560)
         self._log_path = config.log_path()
+        install_standard_close_shortcut(self)
         self._build_ui()
         self.refresh()
 

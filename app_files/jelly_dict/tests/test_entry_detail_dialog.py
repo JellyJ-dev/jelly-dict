@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.core.models import Example, MeaningGroup, Sense, VocabularyEntry
 from app.ui.entry_detail_dialog import EntryDetailDialog
@@ -120,3 +120,16 @@ def test_entry_detail_preserves_full_word_when_title_uses_primary_form(qtbot):
 
     assert "月日" in texts
     assert "月日・歳月" in texts
+
+
+def test_entry_detail_supports_standard_close_shortcut(qtbot):
+    entry = VocabularyEntry(language="ja", word="容疑", meanings_summary="1.용의")
+    dialog = EntryDetailDialog(entry)
+    qtbot.addWidget(dialog)
+
+    assert dialog.close_shortcut.key() == QtGui.QKeySequence(
+        QtGui.QKeySequence.StandardKey.Close
+    )
+    assert dialog.close_shortcut.context() == QtCore.Qt.ShortcutContext.WindowShortcut
+
+    assert dialog.close_shortcut.parent() is dialog

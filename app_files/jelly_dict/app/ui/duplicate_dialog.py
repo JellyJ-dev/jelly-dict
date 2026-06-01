@@ -4,6 +4,7 @@ from PySide6 import QtCore, QtWidgets
 
 from app.core.duplicate_checker import DuplicateDecision, DuplicatePolicy
 from app.core.models import VocabularyEntry
+from app.ui.dialog_shortcuts import install_standard_close_shortcut
 
 
 class DuplicateDialog(QtWidgets.QDialog):
@@ -22,6 +23,7 @@ class DuplicateDialog(QtWidgets.QDialog):
         self.resize(720, 420)
         self._policy: DuplicatePolicy = "keep_existing"
         self._apply_for_session = False
+        install_standard_close_shortcut(self)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 20)

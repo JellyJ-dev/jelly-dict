@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from app.storage import secret_store
 from app.storage.settings_store import Settings, SettingsStore
 from app.ui.dialog_buttons import configure_footer_button
+from app.ui.dialog_shortcuts import install_standard_close_shortcut
 from app.ui.widgets.pill_scrollbar import install_pill_scrollbars
 
 
@@ -90,6 +91,7 @@ class SettingsDialog(QtWidgets.QDialog):
         # Keep TTS provider instances alive across clicks so the heavy
         # KPipeline (~327MB torch.load) is built only once per session.
         self._tts_provider_cache: dict[str, object] = {}
+        install_standard_close_shortcut(self)
         self._build_ui()
         self._load(initial_settings or store.load())
         self._status_probe_timer.start(0)
@@ -1247,6 +1249,7 @@ class _VoicevoxVoicePicker(QtWidgets.QDialog):
         self.resize(520, 600)
         self._all_voices = all_voices
         self._initial = already_selected
+        install_standard_close_shortcut(self)
 
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(16, 14, 16, 14)

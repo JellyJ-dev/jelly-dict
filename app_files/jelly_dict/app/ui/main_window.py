@@ -465,6 +465,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.undo_toast = UndoToast(central)
         self.undo_shortcut = QtGui.QShortcut(QtGui.QKeySequence.Undo, self)
         self.undo_shortcut.activated.connect(self.undo_toast.trigger_undo)
+        self.close_shortcut = QtGui.QShortcut(
+            QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Close),
+            self,
+        )
+        self.close_shortcut.setContext(QtCore.Qt.ShortcutContext.WindowShortcut)
+        self.close_shortcut.activated.connect(self.hide)
 
     def _build_menu(self) -> None:
         menu = self.menuBar()

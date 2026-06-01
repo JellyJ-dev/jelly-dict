@@ -6,6 +6,7 @@ from PySide6 import QtCore, QtWidgets
 
 from app.services.export_preflight import PreflightResult
 from app.ui.dialog_buttons import configure_footer_button
+from app.ui.dialog_shortcuts import install_standard_close_shortcut
 from app.ui.export_options import ExportOptions, ExportPlan, language_label
 from app.ui.settings_view import _settings_combo
 
@@ -50,6 +51,7 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.setWindowTitle("Anki 내보내기 확인")
         self.setMinimumWidth(560)
         self.resize(620, 420)
+        install_standard_close_shortcut(self)
         self._build_ui(force_options)
 
     def selected_options(self) -> ExportOptions:

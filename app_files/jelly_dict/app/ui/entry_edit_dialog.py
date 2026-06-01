@@ -12,6 +12,7 @@ from app.core.models import (
     collect_examples_flat,
 )
 from app.ui.dialog_buttons import configure_footer_button
+from app.ui.dialog_shortcuts import install_standard_close_shortcut
 
 
 class EntryEditDialog(QtWidgets.QDialog):
@@ -29,6 +30,7 @@ class EntryEditDialog(QtWidgets.QDialog):
         self.resize(860, 720)
         self.setMinimumSize(680, 560)
         self._build_ui()
+        install_standard_close_shortcut(self)
         self.set_entry(entry)
 
     def _build_ui(self) -> None:
