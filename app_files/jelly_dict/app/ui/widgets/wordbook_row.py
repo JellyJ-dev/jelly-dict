@@ -47,6 +47,7 @@ class WordbookRow(QtWidgets.QFrame):
     ) -> None:
         super().__init__(parent)
         self._word = word
+        self._edit_enabled = False
         self.setObjectName("wordbookRow")
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(12, 7, 12, 7)
@@ -88,7 +89,7 @@ class WordbookRow(QtWidgets.QFrame):
         action_layout.setSpacing(5)
         self.edit_button = self._action_button("수정", "wordbookRowActionButton")
         self.delete_button = self._action_button("삭제", "wordbookRowDeleteButton")
-        self.edit_button.clicked.connect(lambda: self.editRequested.emit(self._word))
+        self.edit_button.clicked.connect(self._request_edit)
         self.delete_button.clicked.connect(lambda: self.deleteRequested.emit(self._word))
         action_layout.addWidget(self.edit_button)
         action_layout.addWidget(self.delete_button)
@@ -103,13 +104,22 @@ class WordbookRow(QtWidgets.QFrame):
         layout.addWidget(meaning_label)
 
     def set_actions_visible(self, visible: bool, selected_count: int = 1) -> None:
+        allow_edit = visible and selected_count <= 1
+        self._edit_enabled = allow_edit
+        self.edit_button.setVisible(allow_edit)
+        width = 96 if allow_edit else self.delete_button.width()
+        self.action_bar.setFixedSize(width, 28)
         self.action_bar.setVisible(visible)
         if visible:
             self._place_action_bar()
             self.action_bar.raise_()
         count_text = f"선택 {selected_count}개" if selected_count > 1 else self._word
-        self.edit_button.setToolTip(f"{self._word} 수정")
+        self.edit_button.setToolTip(f"{self._word} 수정" if allow_edit else "")
         self.delete_button.setToolTip(f"{count_text} 삭제")
+
+    def _request_edit(self) -> None:
+        if self._edit_enabled:
+            self.editRequested.emit(self._word)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

@@ -307,6 +307,7 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
     assert view.wordbook_stats.text() == "2개 · 선택 1개"
     assert view.wordbook_delete_btn.isHidden()
     assert not first_row.action_bar.isHidden()
+    assert not first_row.edit_button.isHidden()
 
     first_row.edit_button.click()
     assert edit_seen == [("en", "apple")]
@@ -322,10 +323,12 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
     assert view.wordbook_stats.text() == "2개 · 선택 2개"
     assert view.wordbook_delete_btn.isHidden()
     assert not first_row.action_bar.isHidden()
+    assert first_row.edit_button.isHidden()
+    assert not first_row.delete_button.isHidden()
     assert second_row.action_bar.isHidden()
 
     first_row.edit_button.click()
-    assert edit_seen[-1] == ("en", "apple")
+    assert edit_seen == [("en", "apple")]
 
     first_row.delete_button.click()
     assert delete_seen == [("en", ["apple", "banana"])]
@@ -334,6 +337,7 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
 
     assert first_row.action_bar.isHidden()
     assert not second_row.action_bar.isHidden()
+    assert second_row.edit_button.isHidden()
 
 
 def test_wordbook_keyboard_shortcuts_reuse_row_actions_without_header_growth(qtbot):
@@ -634,6 +638,14 @@ def test_wordbook_row_actions_align_to_card_edge_when_visible(qtbot):
     row._place_action_bar()
 
     assert not row.action_bar.isHidden()
+    assert row.action_bar.geometry().right() >= row.width() - 20
+
+    row.set_actions_visible(True, selected_count=2)
+    row._place_action_bar()
+
+    assert row.edit_button.isHidden()
+    assert not row.delete_button.isHidden()
+    assert row.action_bar.width() == row.delete_button.width()
     assert row.action_bar.geometry().right() >= row.width() - 20
 
 
