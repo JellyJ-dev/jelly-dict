@@ -252,6 +252,8 @@ class WordInputView(QtWidgets.QWidget):
         self._ocr_provider = "apple_vision"
         self._clear_search_after_expand = False
         self._pressed_selected_wordbook_item: QtWidgets.QListWidgetItem | None = None
+        self._base_status_summary = ""
+        self._detection_status = ""
         self._list_height_animation: QtCore.QVariantAnimation | None = None
         self._search_height_animation: QtCore.QVariantAnimation | None = None
         self._top_height_animation: QtCore.QVariantAnimation | None = None
@@ -461,10 +463,6 @@ class WordInputView(QtWidgets.QWidget):
         )
         self.lookup_width_animation.setDuration(160)
         self.lookup_width_animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self.detected_label = QtWidgets.QLabel("")
-        self.detected_label.setObjectName("detectedLabel")
-        self.detected_label.setVisible(False)
-        panel_layout.addWidget(self.detected_label, 0, QtCore.Qt.AlignRight)
 
         layout.addSpacing(10)
 
@@ -510,11 +508,6 @@ class WordInputView(QtWidgets.QWidget):
         self.clear_recent_btn.setObjectName("ghostButton")
         self.clear_recent_btn.setToolTip("Excel/캐시는 유지, 표시만 지움")
         recent_header.addWidget(self.clear_recent_btn)
-        self.wordbook_select_visible_btn = QtWidgets.QPushButton("보이는 항목 선택")
-        self.wordbook_select_visible_btn.setObjectName("wordbookActionButton")
-        self.wordbook_select_visible_btn.setToolTip("현재 검색 결과의 단어를 모두 선택")
-        self.wordbook_select_visible_btn.setVisible(False)
-        recent_header.addWidget(self.wordbook_select_visible_btn)
         self.wordbook_export_btn = AnkiExportButton()
         self.wordbook_export_btn.setVisible(False)
         recent_header.addWidget(self.wordbook_export_btn)
@@ -555,13 +548,13 @@ class WordInputView(QtWidgets.QWidget):
 
         self.status_summary = ElideLabel("")
         self.status_summary.setObjectName("statusSummary")
-        self.status_summary.setAlignment(QtCore.Qt.AlignCenter)
+        self.status_summary.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.status_summary.setWordWrap(False)
         self.status_summary.setMinimumWidth(480)
         self.status_summary.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
         )
-        self.status_summary.setMaximumWidth(900)
+        self.status_summary.setMaximumWidth(780)
         footer.addWidget(self.status_summary)
 
         self.settings_btn = QtWidgets.QPushButton("설정")
@@ -584,7 +577,6 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_export_btn.settingsRequested.connect(self.openSettingsRequested.emit)
         self.input.textEdited.connect(lambda _text: self.prewarmRequested.emit())
         self.wordbook_delete_btn.clicked.connect(self._request_wordbook_delete)
-        self.wordbook_select_visible_btn.clicked.connect(self._select_visible_wordbook_items)
         self.wordbook_expand_btn.clicked.connect(self._toggle_wordbook_expanded)
         # Restart the debounce timer on every keystroke; final render
         # happens once the user pauses typing.
@@ -792,8 +784,8 @@ class WordInputView(QtWidgets.QWidget):
         self.input.setFocus()
 
     def set_detection_label(self, text: str) -> None:
-        self.detected_label.setText(text)
-        self.detected_label.setVisible(bool(text))
+        self._detection_status = _compact_detection_status(text)
+        self._render_footer_status_summary()
 
     def show_ocr_image(self, image_path: str) -> None:
         pixmap = QtGui.QPixmap(image_path)
@@ -982,7 +974,6 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_stats.setVisible(False)
         self.clear_recent_btn.setVisible(True)
         self.clear_recent_btn.setEnabled(bool(display_items))
-        self.wordbook_select_visible_btn.setVisible(False)
         self.wordbook_export_btn.setVisible(False)
         self.wordbook_export_btn.setEnabled(True)
         self.wordbook_delete_btn.setVisible(False)
@@ -1153,7 +1144,6 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbook_sort_btn.setVisible(True)
         self.wordbook_stats.setVisible(True)
         self.clear_recent_btn.setVisible(False)
-        self.wordbook_select_visible_btn.setVisible(True)
         self.wordbook_export_btn.setVisible(True)
         self.wordbook_export_btn.setEnabled(bool(self._wordbook_items))
         self.wordbook_export_btn.set_language(language)
@@ -1351,8 +1341,6 @@ class WordInputView(QtWidgets.QWidget):
         if selected_count:
             stats += f" · 선택 {selected_count}개"
         self.wordbook_stats.setText(stats)
-        self.wordbook_select_visible_btn.setVisible(visible_count > 0)
-        self.wordbook_select_visible_btn.setEnabled(visible_count > 0)
         self.wordbook_delete_btn.setVisible(False)
         self.wordbook_delete_btn.setEnabled(False)
         self.wordbook_delete_btn.setText("선택 삭제")
@@ -1443,7 +1431,12 @@ class WordInputView(QtWidgets.QWidget):
         self.wordbookExportRequested.emit(self._list_mode, "settings", False)
 
     def set_status_summary(self, text: str) -> None:
-        self.status_summary.setText(text)
+        self._base_status_summary = text
+        self._render_footer_status_summary()
+
+    def _render_footer_status_summary(self) -> None:
+        parts = [part for part in (self._base_status_summary, self._detection_status) if part]
+        self.status_summary.setText(" · ".join(parts))
 
     def set_anki_export_status(self, text: str) -> None:
         self.wordbook_export_btn.set_status_text(text)
@@ -1606,6 +1599,14 @@ def _elide(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
+
+
+def _compact_detection_status(text: str) -> str:
+    text = (text or "").strip()
+    if not text:
+        return ""
+    text = text.replace("감지된 언어:", "감지:")
+    return " ".join(text.split())
 
 
 def split_bulk_input(text: str) -> list[str]:

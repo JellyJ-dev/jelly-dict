@@ -231,6 +231,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.showMessage("준비됨")
         self._apply_theme()
         self.undo_toast = UndoToast(central)
+        self.undo_shortcut = QtGui.QShortcut(QtGui.QKeySequence.Undo, self)
+        self.undo_shortcut.activated.connect(self.undo_toast.trigger_undo)
 
     def _build_menu(self) -> None:
         menu = self.menuBar()
@@ -703,7 +705,7 @@ class MainWindow(QtWidgets.QMainWindow):
         query_word = job.word if job else (self._current_worker._word if self._current_worker else "?")
 
         self.input_view.set_detection_label(
-            f"감지된 언어: {outcome.detected_language}"
+            f"감지: {outcome.detected_language}"
             + (" (캐시)" if outcome.from_cache else "")
         )
         result = outcome.result

@@ -44,6 +44,15 @@ QMenu::item:selected {
     background: #3a322d;
     color: #f1ece2;
 }
+QToolTip {
+    background: rgba(44, 44, 42, 226);
+    color: #eee9de;
+    border: 1px solid rgba(255, 255, 255, 52);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 650;
+}
 QLineEdit,
 QPlainTextEdit,
 QComboBox,
@@ -225,10 +234,6 @@ QPushButton#wordbookExpandButton:hover {
     color: #f29a78;
     background: #282826;
     border-color: #3f3f3c;
-}
-QLabel#detectedLabel {
-    color: #aaa59c;
-    padding-right: 4px;
 }
 QFrame#commandPanel {
     background: #2a2a28;
@@ -994,13 +999,13 @@ QComboBox#settingsCombo::down-arrow {
     height: 12px;
 }
 QComboBox#settingsCombo QAbstractItemView {
-    background: #242422;
+    background: rgba(36, 36, 34, 242);
     color: #e7e1d6;
-    border: 1px solid #454542;
+    border: none;
     border-radius: 11px;
     outline: 0;
-    padding: 6px;
-    selection-background-color: #3a322d;
+    padding: 8px;
+    selection-background-color: #30302d;
     selection-color: #f1ece2;
 }
 QComboBox#settingsCombo QAbstractItemView::item {
@@ -1009,8 +1014,27 @@ QComboBox#settingsCombo QAbstractItemView::item {
     padding: 4px 10px;
 }
 QComboBox#settingsCombo QAbstractItemView::item:selected {
-    background: #3a322d;
-    color: #f1ece2;
+    background: #30302d;
+    color: #e8744f;
+}
+QListView#settingsComboPopup {
+    background: rgba(36, 36, 34, 242);
+    color: #e7e1d6;
+    border: none;
+    border-radius: 11px;
+    outline: 0;
+    padding: 8px;
+    selection-background-color: #30302d;
+    selection-color: #f1ece2;
+}
+QListView#settingsComboPopup::item {
+    min-height: 30px;
+    border-radius: 8px;
+    padding: 4px 10px;
+}
+QListView#settingsComboPopup::item:selected {
+    background: #30302d;
+    color: #e8744f;
 }
 QDoubleSpinBox#settingsSpin {
     padding-right: 34px;
@@ -1261,6 +1285,13 @@ QLabel#entryDetailExampleRow {
     padding: 10px 0 12px 34px;
     background: transparent;
 }
+QLabel#entryDetailSourceMeta {
+    color: #817b72;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 0 0;
+    background: transparent;
+}
 QPushButton#entryDetailClose {
     background: transparent;
     border: 1px solid transparent;
@@ -1331,9 +1362,9 @@ QPlainTextEdit#entryEditTextEdit:focus {
     border-color: #e8744f;
 }
 QFrame#undoToast {
-    background: rgba(36, 36, 34, 218);
-    border: 1px solid rgba(116, 112, 104, 170);
-    border-radius: 16px;
+    background: rgba(86, 86, 80, 132);
+    border: 1px solid rgba(255, 255, 255, 82);
+    border-radius: 18px;
 }
 QLabel#undoToastMessage {
     color: #f1ece2;

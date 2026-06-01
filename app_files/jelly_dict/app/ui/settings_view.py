@@ -16,6 +16,21 @@ VOICEVOX_DOWNLOAD_URL = "https://voicevox.hiroshiba.jp/"
 EDGE_TTS_INSTALL_HINT = "pipx install edge-tts"
 
 
+def _settings_combo() -> QtWidgets.QComboBox:
+    combo = QtWidgets.QComboBox()
+    combo.setObjectName("settingsCombo")
+    view = QtWidgets.QListView(combo)
+    view.setObjectName("settingsComboPopup")
+    view.setFrameShape(QtWidgets.QFrame.NoFrame)
+    view.setUniformItemSizes(True)
+    palette = view.palette()
+    palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor("#30302d"))
+    palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor("#e8744f"))
+    view.setPalette(palette)
+    combo.setView(view)
+    return combo
+
+
 class _SettingsStatusWorker(QtCore.QObject):
     finished = QtCore.Signal(object)
 
@@ -158,8 +173,7 @@ class SettingsDialog(QtWidgets.QDialog):
         )
         self.cache_check = QtWidgets.QCheckBox("캐시 사용")
         self.preview_check = QtWidgets.QCheckBox("저장 전 미리보기 화면 표시")
-        self.dup_combo = QtWidgets.QComboBox()
-        self.dup_combo.setObjectName("settingsCombo")
+        self.dup_combo = _settings_combo()
         for value, label in [
             ("ask", "묻기 (다이얼로그)"),
             ("update_existing", "덮어쓰기"),
@@ -168,8 +182,7 @@ class SettingsDialog(QtWidgets.QDialog):
             ("add_as_new", "새 항목으로 추가"),
         ]:
             self.dup_combo.addItem(label, value)
-        self.provider_combo = QtWidgets.QComboBox()
-        self.provider_combo.setObjectName("settingsCombo")
+        self.provider_combo = _settings_combo()
         for value, label in [
             ("naver_crawler", "네이버 사전"),
         ]:
@@ -196,8 +209,7 @@ class SettingsDialog(QtWidgets.QDialog):
     def _build_ocr_tab(self) -> QtWidgets.QWidget:
         page, layout = self._new_form()
 
-        self.ocr_combo = QtWidgets.QComboBox()
-        self.ocr_combo.setObjectName("settingsCombo")
+        self.ocr_combo = _settings_combo()
         self.ocr_combo.addItem("Apple Vision (로컬)", "apple_vision")
         self.ocr_combo.addItem("Google Cloud Vision (사용자 API 키)", "google_vision")
 
@@ -329,10 +341,8 @@ class SettingsDialog(QtWidgets.QDialog):
         self.tts_play_back_check = QtWidgets.QCheckBox("뒷면 자동 재생")
         self.tts_play_examples_check = QtWidgets.QCheckBox("예문 음성도 생성")
 
-        self.tts_engine_en_combo = QtWidgets.QComboBox()
-        self.tts_engine_en_combo.setObjectName("settingsCombo")
-        self.tts_voice_en_combo = QtWidgets.QComboBox()
-        self.tts_voice_en_combo.setObjectName("settingsCombo")
+        self.tts_engine_en_combo = _settings_combo()
+        self.tts_voice_en_combo = _settings_combo()
         self.tts_sample_en_btn = QtWidgets.QPushButton("▶")
         self.tts_sample_en_btn.setObjectName("settingsSecondaryButton")
         self.tts_sample_en_btn.setMaximumWidth(40)
@@ -348,10 +358,8 @@ class SettingsDialog(QtWidgets.QDialog):
         en_layout.addWidget(self.tts_voice_en_combo, 1)
         en_layout.addWidget(self.tts_sample_en_btn)
 
-        self.tts_engine_ja_combo = QtWidgets.QComboBox()
-        self.tts_engine_ja_combo.setObjectName("settingsCombo")
-        self.tts_voice_ja_combo = QtWidgets.QComboBox()
-        self.tts_voice_ja_combo.setObjectName("settingsCombo")
+        self.tts_engine_ja_combo = _settings_combo()
+        self.tts_voice_ja_combo = _settings_combo()
         self.tts_voice_add_btn = QtWidgets.QPushButton("+")
         self.tts_voice_add_btn.setObjectName("settingsSecondaryButton")
         self.tts_voice_add_btn.setMaximumWidth(40)

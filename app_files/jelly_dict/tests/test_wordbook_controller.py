@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from PySide6 import QtWidgets
 
 from app.core.models import Example, VocabularyEntry
@@ -119,7 +120,7 @@ def test_wordbook_controller_delete_shows_undo_toast_and_restores_backup(
     monkeypatch.setattr(
         QtWidgets.QMessageBox,
         "warning",
-        lambda *args, **kwargs: QtWidgets.QMessageBox.Yes,
+        lambda *args, **kwargs: pytest.fail("delete confirmation should not open"),
     )
 
     controller.delete_entries("en", ["apple"])

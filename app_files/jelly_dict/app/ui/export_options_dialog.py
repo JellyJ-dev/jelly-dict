@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtWidgets
 from app.services.export_preflight import PreflightResult
 from app.ui.dialog_buttons import configure_footer_button
 from app.ui.export_options import ExportOptions, ExportPlan, language_label
+from app.ui.settings_view import _settings_combo
 
 
 class _ElideLabel(QtWidgets.QLabel):
@@ -85,8 +86,7 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self._add_row(form, "저장 위치", _ElideLabel(str(self._output_path)))
         root.addWidget(summary)
 
-        self.policy_combo = QtWidgets.QComboBox()
-        self.policy_combo.setObjectName("settingsCombo")
+        self.policy_combo = _settings_combo()
         for label, value in [
             ("현재 설정 사용", "settings"),
             ("이번만 TTS 포함", "force_tts"),

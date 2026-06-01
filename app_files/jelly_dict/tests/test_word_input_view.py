@@ -239,7 +239,7 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
         ],
     )
 
-    assert not view.wordbook_select_visible_btn.isHidden()
+    assert not hasattr(view, "wordbook_select_visible_btn")
     assert view.wordbook_delete_btn.isHidden()
     assert not hasattr(view, "wordbook_copy_btn")
     first_item = view.recent_list.item(0)
@@ -251,14 +251,16 @@ def test_wordbook_row_actions_handle_selected_words_without_header_growth(qtbot)
     first_item.setSelected(True)
 
     assert view.wordbook_stats.text() == "2/2개 · 선택 1개"
-    assert not view.wordbook_select_visible_btn.isHidden()
     assert view.wordbook_delete_btn.isHidden()
     assert not first_row.action_bar.isHidden()
 
     first_row.edit_button.click()
     assert edit_seen == [("en", "apple")]
 
-    view.wordbook_select_visible_btn.click()
+    QtWidgets.QApplication.sendEvent(
+        view.recent_list,
+        _key_event(QtCore.Qt.Key_A, QtCore.Qt.KeyboardModifier.ControlModifier),
+    )
     second_item = view.recent_list.item(1)
     second_row = view.recent_list.itemWidget(second_item)
     assert isinstance(second_row, WordbookRow)
@@ -634,7 +636,18 @@ def test_footer_status_summary_has_room_for_language_paths(qtbot):
     qtbot.addWidget(view)
 
     assert view.status_summary.minimumWidth() >= 480
-    assert view.status_summary.maximumWidth() >= 900
+    assert view.status_summary.maximumWidth() >= 760
     assert view.status_summary.sizePolicy().horizontalPolicy() == (
-        QtWidgets.QSizePolicy.Expanding
+        QtWidgets.QSizePolicy.Preferred
     )
+
+
+def test_detection_status_renders_in_footer_not_command_panel(qtbot):
+    view = WordInputView()
+    qtbot.addWidget(view)
+
+    view.set_status_summary("EN: vocab_en.xlsx · JA: vocab_ja.xlsx · Naver · cache on")
+    view.set_detection_label("감지된 언어: en (캐시)")
+
+    assert "감지: en (캐시)" in view.status_summary.text()
+    assert not hasattr(view, "detected_label")

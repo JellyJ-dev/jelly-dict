@@ -17,7 +17,8 @@ def test_entry_detail_shows_memo_tags_source_and_all_examples(qtbot):
         meanings_summary="1.보유",
         tags=["school", "<b>exam</b>"],
         memo="중요 <b>단어</b>",
-        source_url="https://example.test/retention?from=very-long-query",
+        source_provider="naver_en",
+        source_url="https://en.dict.naver.com/retention?from=very-long-query",
         examples_flat=[
             Example(source_text_plain=f"example {idx}", translation_ko=f"예문 {idx}")
             for idx in range(12)
@@ -32,8 +33,9 @@ def test_entry_detail_shows_memo_tags_source_and_all_examples(qtbot):
     assert "school, <b>exam</b>" in texts
     assert "메모" in texts
     assert "중요 <b>단어</b>" in texts
-    assert "출처" in texts
-    assert any("example.test/retention" in text for text in texts)
+    assert "출처" not in texts
+    assert any("source: NAVER" in text for text in texts)
+    assert dialog.findChildren(QtWidgets.QLabel, "entryDetailSourceMeta")
     example_rows = [text for text in texts if text.startswith("example ")]
     assert len(example_rows) == 12
     assert "example 11\n예문 11" in texts
@@ -59,6 +61,25 @@ def test_entry_detail_word_list_reports_hidden_count(qtbot):
     texts = _label_texts(dialog)
 
     assert any("외 2개" in text for text in texts)
+
+
+def test_entry_detail_header_meta_omits_duplicate_provider(qtbot):
+    entry = VocabularyEntry(
+        language="en",
+        word="disturbance",
+        part_of_speech=["Noun"],
+        meanings_summary="1.방해",
+        source_provider="naver_en",
+        source_url="https://en.dict.naver.com/disturbance",
+    )
+    dialog = EntryDetailDialog(entry)
+    qtbot.addWidget(dialog)
+
+    texts = _label_texts(dialog)
+
+    assert "Noun" in texts
+    assert all("네이버" not in text for text in texts)
+    assert any("source: NAVER" in text for text in texts)
 
 
 def test_entry_detail_preserves_full_word_when_title_uses_primary_form(qtbot):

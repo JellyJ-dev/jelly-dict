@@ -157,23 +157,6 @@ class WordbookController:
         if not words:
             return
 
-        preview = "\n".join(f"• {word}" for word in words[:10])
-        if len(words) > 10:
-            preview += f"\n... 외 {len(words) - 10}개"
-        sync_note = ""
-        if self._anki_sync.enabled:
-            sync_note = (
-                "\n\nAnkiConnect가 켜져 있으면 Anki 카드도 함께 삭제를 시도합니다."
-            )
-        ok = QtWidgets.QMessageBox.warning(
-            self._parent,
-            "삭제 확인",
-            "선택한 단어를 삭제할까요?\n\n" + preview + sync_note,
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-        )
-        if ok != QtWidgets.QMessageBox.Yes:
-            return
-
         path = Path(self._settings.excel_path_for(language))
         keys = {
             normalize_word_key(word, language)  # type: ignore[arg-type]

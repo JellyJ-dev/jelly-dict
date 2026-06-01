@@ -88,6 +88,9 @@ class UndoToast(QtWidgets.QFrame):
         self._fade.setEndValue(0.0)
         self._fade.start()
 
+    def trigger_undo(self) -> None:
+        self._undo()
+
     def _undo(self) -> None:
         callback = self._undo_callback
         self._undo_callback = None

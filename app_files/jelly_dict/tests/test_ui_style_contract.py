@@ -49,12 +49,13 @@ def test_settings_combo_popup_uses_rounded_dark_menu_contract():
     item = _qss_block(qss, "QComboBox#settingsCombo QAbstractItemView::item")
     selected = _qss_block(qss, "QComboBox#settingsCombo QAbstractItemView::item:selected")
 
-    assert "border: 1px solid #454542;" in popup
+    assert "border: none;" in popup
     assert "border-radius: 11px;" in popup
-    assert "padding: 6px;" in popup
-    assert "selection-background-color: #3a322d;" in popup
+    assert "padding: 8px;" in popup
+    assert "selection-background-color: #30302d;" in popup
     assert "border-radius: 8px;" in item
-    assert "background: #3a322d;" in selected
+    assert "background: #30302d;" in selected
+    assert "color: #e8744f;" in selected
 
 
 def test_scrollbars_use_rounded_pill_contract():
@@ -80,8 +81,9 @@ def test_delete_undo_toast_uses_compact_translucent_contract():
     toast = _qss_block(qss, "QFrame#undoToast")
     button = _qss_block(qss, "QPushButton#undoToastButton")
 
-    assert "rgba(36, 36, 34" in toast
-    assert "border-radius: 16px;" in toast
+    assert "rgba(86, 86, 80" in toast
+    assert "rgba(255, 255, 255" in toast
+    assert "border-radius: 18px;" in toast
     assert "max-height: 28px;" in button
     assert "text-align: center;" in button
 
@@ -93,6 +95,7 @@ def test_wordbook_row_actions_are_edit_delete_only_contract():
     assert "wordbookEditRequested" in input_source
     assert "wordbookRequeryRequested" not in input_source
     assert "wordbook_copy_btn" not in input_source
+    assert "wordbook_select_visible_btn" not in input_source
     assert 'self._action_button("수정"' in row_source
     assert 'self._action_button("복사"' not in row_source
     assert 'self._action_button("재조회"' not in row_source
@@ -113,4 +116,4 @@ def test_word_list_dialog_button_text_alignment_contract():
     assert "text-align: left;" not in source
     assert "QComboBox#wordListSort QAbstractItemView" in source
     assert "border-radius: 11px;" in source
-    assert "selection-background-color: #3a322d;" in source
+    assert "selection-background-color: #30302d;" in source

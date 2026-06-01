@@ -70,9 +70,6 @@ class EntryDetailDialog(QtWidgets.QDialog):
         meta = []
         if self._entry.part_of_speech:
             meta.append(", ".join(self._entry.part_of_speech))
-        provider = _provider_label(self._entry.source_provider or "")
-        if provider:
-            meta.append(provider)
         if meta:
             meta_label = QtWidgets.QLabel(" · ".join(meta))
             meta_label.setObjectName("entryDetailMeta")
@@ -189,29 +186,35 @@ class EntryDetailDialog(QtWidgets.QDialog):
 
     def _add_source(self, layout: QtWidgets.QVBoxLayout) -> None:
         url = (self._entry.source_url or "").strip()
-        if not url:
+        source = _source_label(self._entry.source_provider or "", url)
+        if not url and not source:
             return
-        label = QtWidgets.QLabel("출처")
-        label.setObjectName("entryDetailSection")
-        layout.addWidget(label)
-        shown = _display_url(url)
-        row = QtWidgets.QLabel(
-            f'<a style="color:#b55235; text-decoration:none;" href="{escape(url)}">'
-            f"{escape(shown)}</a>"
-        )
-        row.setObjectName("entryDetailSenseRow")
-        row.setOpenExternalLinks(True)
-        row.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        text = f"source: {source or _display_url(url)}"
+        if url:
+            row = QtWidgets.QLabel(
+                f'<a style="color:#817b72; text-decoration:none;" href="{escape(url)}">'
+                f"{escape(text)}</a>"
+            )
+            row.setOpenExternalLinks(True)
+            row.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        else:
+            row = QtWidgets.QLabel(text)
+            row.setTextFormat(QtCore.Qt.PlainText)
+        row.setObjectName("entryDetailSourceMeta")
         row.setWordWrap(True)
         layout.addWidget(row)
 
 
-def _provider_label(provider: str) -> str:
-    return {
-        "naver_en": "네이버 영어사전",
-        "naver_ja": "네이버 일본어사전",
-        "manual": "직접 입력",
-    }.get(provider, "")
+def _source_label(provider: str, url: str) -> str:
+    if provider in {"naver_en", "naver_ja", "naver_api"}:
+        return "NAVER"
+    if provider == "manual":
+        return "Manual"
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
+    if "naver." in domain:
+        return "NAVER"
+    return domain.removeprefix("www.")
 
 
 def _display_url(url: str, limit: int = 72) -> str:
