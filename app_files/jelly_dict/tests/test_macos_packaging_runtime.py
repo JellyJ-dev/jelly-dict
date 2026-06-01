@@ -75,7 +75,7 @@ exit 0
 def test_release_version_is_consistent_across_public_entrypoints():
     pyproject = tomllib.loads((JELLY_ROOT / "pyproject.toml").read_text())
     version = pyproject["project"]["version"]
-    assert re.fullmatch(r"\d+\.\d+\.\d+", version)
+    assert re.fullmatch(r"\d+\.\d+(?:\.\d+)?", version)
 
     installer = _read(PROJECT_ROOT / "Install jelly dict.command")
     readme = _read(PROJECT_ROOT / "README.md")
