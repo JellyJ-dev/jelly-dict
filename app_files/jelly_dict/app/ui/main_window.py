@@ -1436,14 +1436,37 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot()
     def _clear_recent(self) -> None:
+        removed = self.input_view.recent_count()
         try:
+            snapshot = self._cache.snapshot_recent_lookups()
             self._cache.clear_recent()
         except Exception as exc:
             log.warning("clear recent failed: %s", exc)
             self.status.showMessage("최근 단어 목록 지우기 실패")
             return
         self._refresh_recent(remember=True)
-        self.status.showMessage("최근 단어 목록을 지웠습니다 (Excel/캐시는 유지)")
+        if removed <= 0:
+            self.status.showMessage("최근 단어 목록을 지웠습니다")
+            return
+        self.status.showMessage(f"최근 단어 {removed}개 삭제됨")
+        self.show_undo_toast(
+            f"{removed}개를 삭제했습니다.",
+            lambda: self._restore_recent(snapshot, removed),
+        )
+
+    def _restore_recent(
+        self,
+        snapshot: list[tuple[str, str, str | None, str]],
+        removed: int,
+    ) -> None:
+        try:
+            self._cache.restore_recent_lookups(snapshot)
+        except Exception as exc:
+            log.warning("restore recent failed: %s", exc)
+            self.status.showMessage(f"최근 단어 되돌리기 실패: {exc}")
+            return
+        self._refresh_recent(remember=True)
+        self.status.showMessage(f"{removed}개 삭제를 되돌렸습니다.")
 
     def _open_developer_tools(self) -> None:
         dlg = DeveloperToolsDialog(self)

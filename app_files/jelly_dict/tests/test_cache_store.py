@@ -95,6 +95,23 @@ def test_delete_recent_entries_targets_word_or_entry_word(isolated_runtime):
     assert [(lang, word) for lang, word, *_ in recent] == [("en", "banana")]
 
 
+def test_recent_clear_can_restore_snapshot(isolated_runtime):
+    cache = CacheStore()
+    cache.remember_lookup("apple", "en", entry_word="Apple")
+    cache.remember_lookup("banana", "en", entry_word="banana")
+
+    snapshot = cache.snapshot_recent_lookups()
+
+    assert len(snapshot) == 2
+
+    cache.clear_recent()
+    assert cache.recent(limit=10) == []
+
+    assert cache.restore_recent_lookups(snapshot) == 2
+    restored = {(language, word, entry_word) for language, word, entry_word, _ in cache.recent(10)}
+    assert restored == {("en", "apple", "Apple"), ("en", "banana", "banana")}
+
+
 def test_recent_with_entries_returns_cached_payload(isolated_runtime):
     cache = CacheStore()
     entry = VocabularyEntry(language="en", word="apple")

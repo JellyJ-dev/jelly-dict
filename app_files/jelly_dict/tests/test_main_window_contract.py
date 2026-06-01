@@ -50,6 +50,15 @@ def test_main_window_hides_native_macos_titlebar_chrome():
     assert "setUnifiedTitleAndToolBarOnMac" not in source
 
 
+def test_recent_clear_uses_undo_toast_contract():
+    source = MAIN_WINDOW.read_text(encoding="utf-8")
+
+    assert "snapshot_recent_lookups()" in source
+    assert "restore_recent_lookups(snapshot)" in source
+    assert 'f"{removed}개를 삭제했습니다."' in source
+    assert "self._restore_recent(snapshot, removed)" in source
+
+
 def test_transient_status_bar_auto_hides_messages(qtbot):
     parent = QtWidgets.QWidget()
     parent.resize(640, 480)

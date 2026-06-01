@@ -1058,6 +1058,9 @@ class WordInputView(QtWidgets.QWidget):
             return
         self._render_recent()
 
+    def recent_count(self) -> int:
+        return len(self._recent_items)
+
     def _render_current_list(self) -> None:
         if self._list_mode == "recent":
             self._render_recent()

@@ -107,6 +107,7 @@ def test_recent_items_enable_clear_action(qtbot):
     assert view.clear_recent_btn.isEnabled()
     assert not view.wordbook_search.isHidden()
     assert not view.wordbook_expand_btn.isHidden()
+    assert view.recent_count() == 1
 
 
 def test_recent_search_filters_items_without_disabling_clear(qtbot):

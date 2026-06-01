@@ -132,6 +132,49 @@ class CacheStore:
         except Exception as exc:
             raise CacheError(str(exc)) from exc
 
+    def snapshot_recent_lookups(self) -> list[tuple[str, str, str | None, str]]:
+        """Return raw recent rows so a destructive clear can be undone."""
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT language, word, entry_word, looked_up_at
+                    FROM recent_lookups
+                    ORDER BY id ASC
+                    """
+                ).fetchall()
+        except Exception as exc:
+            raise CacheError(str(exc)) from exc
+        return [
+            (row["language"], row["word"], row["entry_word"], row["looked_up_at"])
+            for row in rows
+        ]
+
+    def restore_recent_lookups(
+        self,
+        rows: Iterable[tuple[str, str, str | None, str]],
+    ) -> int:
+        """Append previously snapshotted recent rows without touching cache."""
+        payload = [
+            (language, word, entry_word, looked_up_at)
+            for language, word, entry_word, looked_up_at in rows
+            if language and word and looked_up_at
+        ]
+        if not payload:
+            return 0
+        try:
+            with self._conn() as conn:
+                conn.executemany(
+                    """
+                    INSERT INTO recent_lookups(language, word, entry_word, looked_up_at)
+                    VALUES(?, ?, ?, ?)
+                    """,
+                    payload,
+                )
+        except Exception as exc:
+            raise CacheError(str(exc)) from exc
+        return len(payload)
+
     def set_state(self, key: str, value: str) -> None:
         key = (key or "").strip()
         if not key:
