@@ -37,3 +37,29 @@ def test_undo_toast_supports_keyboard_trigger_after_hiding(qtbot):
     toast.trigger_undo()
 
     assert seen == ["undo"]
+
+
+def test_undo_toast_fades_the_whole_surface_in_and_out(qtbot):
+    parent = QtWidgets.QWidget()
+    parent.resize(640, 480)
+    qtbot.addWidget(parent)
+    toast = UndoToast(parent)
+
+    toast.show_message("1개를 삭제했습니다.", None, duration_ms=0)
+
+    assert toast._fade.endValue() == 1.0
+    assert toast._fade.duration() == 160
+
+    toast._fade.stop()
+    toast._opacity.setOpacity(1.0)
+    toast._fade_out()
+
+    assert toast._fade.endValue() == 0.0
+    assert toast._fade.duration() == 260
+    assert toast._hide_after_fade is True
+
+    toast._fade.stop()
+    toast._opacity.setOpacity(0.0)
+    toast._on_fade_finished()
+
+    assert not toast.isVisible()

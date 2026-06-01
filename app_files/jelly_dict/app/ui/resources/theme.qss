@@ -1362,25 +1362,25 @@ QPlainTextEdit#entryEditTextEdit:focus {
     border-color: #e8744f;
 }
 QFrame#undoToast {
-    background: rgba(86, 86, 80, 132);
-    border: 1px solid rgba(255, 255, 255, 82);
+    background: rgba(74, 74, 68, 138);
+    border: none;
     border-radius: 18px;
 }
 QLabel#undoToastMessage {
-    color: #f1ece2;
+    color: rgba(245, 241, 232, 226);
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
 }
 QPushButton#undoToastButton {
     background: transparent;
-    color: #e8744f;
+    color: rgba(255, 128, 84, 235);
     border: 1px solid transparent;
     border-radius: 10px;
     padding: 0 10px;
     min-height: 28px;
     max-height: 28px;
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 750;
     text-align: center;
 }
 QPushButton#undoToastButton:hover {

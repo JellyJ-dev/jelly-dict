@@ -58,6 +58,17 @@ class ElideLabel(QtWidgets.QLabel):
         super().resizeEvent(event)
         super().setText(self._elided())
 
+    def sizeHint(self) -> QtCore.QSize:  # noqa: N802 - Qt API
+        hint = super().sizeHint()
+        if self._full_text:
+            hint.setWidth(self.fontMetrics().horizontalAdvance(self._full_text) + 4)
+        return hint
+
+    def minimumSizeHint(self) -> QtCore.QSize:  # noqa: N802 - Qt API
+        hint = super().minimumSizeHint()
+        hint.setWidth(0)
+        return hint
+
     def _elided(self) -> str:
         return self.fontMetrics().elidedText(
             self._full_text,
@@ -548,9 +559,9 @@ class WordInputView(QtWidgets.QWidget):
 
         self.status_summary = ElideLabel("")
         self.status_summary.setObjectName("statusSummary")
-        self.status_summary.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.status_summary.setAlignment(QtCore.Qt.AlignCenter)
         self.status_summary.setWordWrap(False)
-        self.status_summary.setMinimumWidth(480)
+        self.status_summary.setMinimumWidth(0)
         self.status_summary.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
         )

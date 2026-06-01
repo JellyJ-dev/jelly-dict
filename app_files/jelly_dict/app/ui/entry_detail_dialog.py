@@ -111,10 +111,6 @@ class EntryDetailDialog(QtWidgets.QDialog):
     def _add_meanings(self, layout: QtWidgets.QVBoxLayout) -> None:
         if self._entry.meaning_groups:
             for group in self._entry.meaning_groups:
-                if group.pos:
-                    label = QtWidgets.QLabel(group.pos)
-                    label.setObjectName("entryDetailSection")
-                    layout.addWidget(label)
                 for sense in group.senses:
                     text = sense.gloss.strip()
                     if not text and sense.sub_senses:

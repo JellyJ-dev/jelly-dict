@@ -634,11 +634,17 @@ def test_long_ocr_and_queue_chips_are_elided(qtbot):
 def test_footer_status_summary_has_room_for_language_paths(qtbot):
     view = WordInputView()
     qtbot.addWidget(view)
+    summary = "EN: vocab_en.xlsx · JA: vocab_ja.xlsx · Naver · cache on"
+    view.set_status_summary(summary)
 
-    assert view.status_summary.minimumWidth() >= 480
+    assert view.status_summary.minimumWidth() == 0
     assert view.status_summary.maximumWidth() >= 760
     assert view.status_summary.sizePolicy().horizontalPolicy() == (
         QtWidgets.QSizePolicy.Preferred
+    )
+    assert view.status_summary.alignment() == QtCore.Qt.AlignCenter
+    assert view.status_summary.sizeHint().width() >= (
+        view.status_summary.fontMetrics().horizontalAdvance(summary)
     )
 
 

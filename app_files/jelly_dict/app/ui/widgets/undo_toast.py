@@ -12,6 +12,7 @@ class UndoToast(QtWidgets.QFrame):
         self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
         self._undo_callback: Callable[[], None] | None = None
+        self._hide_after_fade = False
 
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(14, 9, 10, 9)
@@ -36,9 +37,8 @@ class UndoToast(QtWidgets.QFrame):
         self._dismiss_timer.timeout.connect(self._fade_out)
 
         self._fade = QtCore.QPropertyAnimation(self._opacity, b"opacity", self)
-        self._fade.setDuration(220)
         self._fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._fade.finished.connect(self.hide)
+        self._fade.finished.connect(self._on_fade_finished)
 
         parent.installEventFilter(self)
         self.hide()
@@ -55,11 +55,12 @@ class UndoToast(QtWidgets.QFrame):
         self._undo_callback = undo_callback
         self.message_label.setText(message)
         self.undo_button.setVisible(undo_callback is not None)
-        self._opacity.setOpacity(1.0)
+        self._opacity.setOpacity(0.0)
         self.adjustSize()
         self._place()
         self.show()
         self.raise_()
+        self._start_fade(1.0, 160, hide_after_fade=False)
         if duration_ms > 0:
             self._dismiss_timer.start(duration_ms)
 
@@ -81,12 +82,31 @@ class UndoToast(QtWidgets.QFrame):
         self.move(x, y)
 
     def _fade_out(self) -> None:
-        if not self.isVisible():
+        if self.isHidden():
             return
+        self._start_fade(0.0, 260, hide_after_fade=True)
+
+    def _start_fade(
+        self,
+        target_opacity: float,
+        duration_ms: int,
+        *,
+        hide_after_fade: bool,
+    ) -> None:
         self._fade.stop()
+        self._hide_after_fade = hide_after_fade
         self._fade.setStartValue(self._opacity.opacity())
-        self._fade.setEndValue(0.0)
+        self._fade.setEndValue(target_opacity)
+        self._fade.setDuration(duration_ms)
         self._fade.start()
+
+    def _on_fade_finished(self) -> None:
+        if self._hide_after_fade:
+            self.hide()
+            self._opacity.setOpacity(0.0)
+            self._hide_after_fade = False
+            return
+        self._opacity.setOpacity(1.0)
 
     def trigger_undo(self) -> None:
         self._undo()
@@ -96,6 +116,7 @@ class UndoToast(QtWidgets.QFrame):
         self._undo_callback = None
         self._dismiss_timer.stop()
         self._fade.stop()
+        self._hide_after_fade = False
         self.hide()
         if callback is not None:
             callback()

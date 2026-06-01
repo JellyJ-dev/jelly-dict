@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 
-from app.core.models import Example, VocabularyEntry
+from app.core.models import Example, MeaningGroup, Sense, VocabularyEntry
 from app.ui.entry_detail_dialog import EntryDetailDialog
 
 
@@ -80,6 +80,31 @@ def test_entry_detail_header_meta_omits_duplicate_provider(qtbot):
     assert "Noun" in texts
     assert all("네이버" not in text for text in texts)
     assert any("source: NAVER" in text for text in texts)
+
+
+def test_entry_detail_body_omits_part_of_speech_section(qtbot):
+    entry = VocabularyEntry(
+        language="en",
+        word="consecutive",
+        part_of_speech=["ADJECTIVE"],
+        meaning_groups=[
+            MeaningGroup(
+                pos="ADJECTIVE",
+                senses=[Sense(number=1, gloss="연이은")],
+            )
+        ],
+    )
+    dialog = EntryDetailDialog(entry)
+    qtbot.addWidget(dialog)
+
+    body_sections = [
+        label.text()
+        for label in dialog.findChildren(QtWidgets.QLabel, "entryDetailSection")
+    ]
+
+    assert "ADJECTIVE" in _label_texts(dialog)
+    assert "ADJECTIVE" not in body_sections
+    assert "1. 연이은" in _label_texts(dialog)
 
 
 def test_entry_detail_preserves_full_word_when_title_uses_primary_form(qtbot):

@@ -81,10 +81,11 @@ def test_delete_undo_toast_uses_compact_translucent_contract():
     toast = _qss_block(qss, "QFrame#undoToast")
     button = _qss_block(qss, "QPushButton#undoToastButton")
 
-    assert "rgba(86, 86, 80" in toast
-    assert "rgba(255, 255, 255" in toast
+    assert "rgba(74, 74, 68" in toast
+    assert "border: none;" in toast
     assert "border-radius: 18px;" in toast
     assert "max-height: 28px;" in button
+    assert "font-weight: 750;" in button
     assert "text-align: center;" in button
 
 
