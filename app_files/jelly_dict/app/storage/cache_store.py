@@ -36,11 +36,7 @@ class CacheStore:
             return None
         if not row:
             return None
-        try:
-            return VocabularyEntry.from_json(row["entry_json"])
-        except Exception as exc:
-            log.warning("cache deserialize failed: %s", exc)
-            return None
+        return _entry_from_cache_json(row["entry_json"])
 
     def upsert(self, entry: VocabularyEntry) -> None:
         try:
@@ -310,12 +306,9 @@ class CacheStore:
 
         cache_index: dict[tuple[str, str], VocabularyEntry] = {}
         for cr in cache_rows:
-            try:
-                cache_index[(cr["language"], cr["word_key"])] = (
-                    VocabularyEntry.from_json(cr["entry_json"])
-                )
-            except Exception as exc:
-                log.warning("cache deserialize failed: %s", exc)
+            entry = _entry_from_cache_json(cr["entry_json"])
+            if entry is not None:
+                cache_index[(cr["language"], cr["word_key"])] = entry
 
         out: list[tuple[str, str, str | None, str, VocabularyEntry | None]] = []
         for row, (lang, key, typed) in zip(grouped, candidates):
@@ -329,3 +322,25 @@ class CacheStore:
                     entry = self.get(typed, lang)  # type: ignore[arg-type]
             out.append((lang, typed, row["entry_word"], row["t"], entry))
         return out
+
+
+def _entry_from_cache_json(payload: str) -> VocabularyEntry | None:
+    try:
+        entry = VocabularyEntry.from_json(payload)
+    except Exception as exc:
+        log.warning("cache deserialize failed: %s", exc)
+        return None
+    if _entry_needs_parser_refresh(entry):
+        log.info("Ignoring stale parser cache entry: %s/%s", entry.language, entry.word)
+        return None
+    return entry
+
+
+def _entry_needs_parser_refresh(entry: VocabularyEntry) -> bool:
+    if entry.source_provider != "naver_en":
+        return False
+    try:
+        from app.dictionary.naver_english import cache_entry_needs_refresh
+    except Exception:
+        return False
+    return cache_entry_needs_refresh(entry)

@@ -65,6 +65,70 @@ def test_recalibration_falls_back_to_search_result_rows():
     assert entry.word == "recalibration"
     assert entry.part_of_speech and entry.part_of_speech[0] == "Noun"
     assert "재교정" in entry.meanings_summary or "재측정" in entry.meanings_summary
+    assert "Unit Measures" not in entry.meanings_summary
+    assert "빈번한 재보정" not in entry.meanings_summary
+    assert "Plural form" not in entry.meanings_summary
+
+
+def test_search_fallback_prefers_exact_headword_rows():
+    html = _load("naver_en_recalibration.html")
+    entry, _ = naver_english.parse_with_canonical(
+        html, word="recalibration", source_url="x"
+    )
+    assert entry is not None
+
+    glosses = [sense.gloss for sense in entry.meaning_groups[0].senses]
+
+    assert glosses == ["재교정", "재측정"]
+
+
+def test_meaning_tray_drops_cross_reference_and_english_definition_noise():
+    html = """
+    <div id="allMeanGroups">
+      <div class="part_area"><span class="part_speech">Noun</span></div>
+      <ul class="mean_list">
+        <li class="mean_item">
+          <div class="mean_desc">
+            <span class="num">1</span>
+            <div class="cont"><span class="mean">특히 美 (= artefact)</span></div>
+          </div>
+        </li>
+        <li class="mean_item">
+          <div class="mean_desc">
+            <span class="num">2</span>
+            <div class="cont"><span class="mean">인공물[가공품]</span></div>
+          </div>
+        </li>
+        <li class="mean_item" lang="en">
+          <div class="mean_desc">
+            <span class="num">3</span>
+            <div class="cont">
+              <span class="mean" lang="en">
+                n. a simple object that was made by people in the past UK: artefact
+              </span>
+            </div>
+          </div>
+        </li>
+        <li class="mean_item">
+          <div class="mean_desc">
+            <span class="num">4</span>
+            <div class="cont">
+              <span class="mean">의학 흐름인공물, 흐름허상, 유동인공물 (→ artifact)</span>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+    entry, _ = naver_english.parse_with_canonical(html, word="artifact", source_url="x")
+    assert entry is not None
+
+    glosses = [sense.gloss for sense in entry.meaning_groups[0].senses]
+
+    assert glosses == ["인공물[가공품]", "의학 흐름인공물, 흐름허상, 유동인공물"]
+    assert "artefact" not in entry.meanings_summary.lower()
+    assert "artifact" not in entry.meanings_summary.lower()
+    assert "n. a simple object" not in entry.meanings_summary
 
 
 @pytest.mark.parametrize(

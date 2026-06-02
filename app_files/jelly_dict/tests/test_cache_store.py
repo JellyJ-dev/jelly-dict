@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.models import VocabularyEntry
+from app.core.models import MeaningGroup, Sense, VocabularyEntry
 from app.storage.cache_store import CacheStore
 
 
@@ -144,3 +144,25 @@ def test_recent_with_entries_falls_back_when_entry_word_differs(isolated_runtime
     assert entry_word == "蘇る·甦る"
     assert cached is not None
     assert cached.word == "蘇る·甦る"
+
+
+def test_stale_naver_english_cache_is_ignored(isolated_runtime):
+    cache = CacheStore()
+    entry = VocabularyEntry(
+        language="en",
+        word="artifact",
+        source_provider="naver_en",
+        meaning_groups=[
+            MeaningGroup(
+                pos="Noun",
+                senses=[Sense(number=1, gloss="특히 美 (= artefact)")],
+            )
+        ],
+    )
+    cache.upsert(entry)
+    cache.remember_lookup("artifact", "en", entry_word="artifact")
+
+    assert cache.get("artifact", "en") is None
+    recent = cache.recent_with_entries(10)
+    assert len(recent) == 1
+    assert recent[0][-1] is None

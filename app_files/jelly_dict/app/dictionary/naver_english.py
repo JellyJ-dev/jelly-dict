@@ -11,6 +11,7 @@ unknown structures and the caller falls back to manual entry.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Callable
 
 from app.core.models import (
@@ -69,6 +70,23 @@ SEL_RELATION_ITEM = ".cont .item"
 WAIT_SELECTOR = "#allMeanGroups, .mean_tray.important_words, .entry_pronounce, .mean_list .mean_item .mean_desc"
 
 log = logging.getLogger(__name__)
+
+_HANGUL_RE = re.compile(r"[가-힣]")
+_REFERENCE_RE = re.compile(r"\s*(?:\((?:=|→|->)\s*[^)]*\)|(?:=|→|->)\s*\S+)\s*")
+_GLOSS_STOPWORDS = {
+    "구어",
+    "드물게",
+    "문어",
+    "미국",
+    "방언",
+    "비격식",
+    "속어",
+    "영국",
+    "용어",
+    "전문",
+    "주로",
+    "특히",
+}
 
 
 def lookup_url(word: str) -> str:
@@ -131,6 +149,20 @@ def parse_with_canonical(
     return entry, canonical
 
 
+def cache_entry_needs_refresh(entry: VocabularyEntry) -> bool:
+    if entry.source_provider != "naver_en":
+        return False
+    for group in entry.meaning_groups:
+        for sense in group.senses:
+            gloss = (sense.gloss or "").strip()
+            if not gloss:
+                continue
+            cleaned = _clean_meaning_gloss(gloss)
+            if not cleaned or cleaned != gloss:
+                return True
+    return False
+
+
 def _first_audio_url(soup, base_url: str) -> str | None:
     """Naver renders pronunciations through a JS TTS API rather than a
     static <audio src>. We do not synthesize the URL — return None and
@@ -167,18 +199,8 @@ def _parse_search_result_rows(
     canonical = ""
 
     typed_lower = word.lower()
-    for row in soup.select(".row"):
-        link = row.select_one(".origin a.link, .origin .text")
-        if link is None:
-            continue
-        row_word = link.get_text(" ", strip=True).strip()
-        if not row_word:
-            continue
-        row_lower = row_word.lower()
-        # Accept rows whose headword either contains or is contained
-        # within the typed word — covers inflections both ways.
-        if row_lower != typed_lower and typed_lower not in row_lower and row_lower not in typed_lower:
-            continue
+    candidate_rows = _select_search_result_rows(soup, typed_lower)
+    for row, row_word in candidate_rows:
         if not canonical:
             canonical = row_word
         for mean_item in row.select("ul.mean_list > li.mean_item"):
@@ -190,7 +212,7 @@ def _parse_search_result_rows(
             # Strip the POS span out so the remaining text is the gloss.
             if wc_node is not None:
                 wc_node.extract()
-            gloss = text_or_empty(mean_p)
+            gloss = _clean_meaning_gloss(text_or_empty(mean_p))
             if not gloss:
                 continue
             # Some rows omit POS — inherit the most recent one so we
@@ -209,6 +231,53 @@ def _parse_search_result_rows(
         for pos, senses in groups_by_pos.items()
     ]
     return groups, canonical
+
+
+def _select_search_result_rows(soup, typed_lower: str):
+    candidates: list[tuple[int, object, str]] = []
+    for row in soup.select(".row"):
+        link = row.select_one(".origin a.link, .origin .text")
+        if link is None:
+            continue
+        if str(link.get("lang", "")).lower() not in {"", "en"}:
+            continue
+        row_word = link.get_text(" ", strip=True).strip()
+        score = _search_row_match_score(row_word, typed_lower)
+        if score is None:
+            continue
+        candidates.append((score, row, row_word))
+    if not candidates:
+        return []
+    best_score = min(score for score, _, _ in candidates)
+    best = [(row, row_word) for score, row, row_word in candidates if score == best_score]
+    if best_score <= 1:
+        return best
+    return best[:1]
+
+
+def _search_row_match_score(row_word: str, typed_lower: str) -> int | None:
+    row_lower = (row_word or "").strip().lower()
+    if not row_lower or not typed_lower:
+        return None
+    if row_lower == typed_lower:
+        return 0
+    if _simple_lemma_key(row_lower) == _simple_lemma_key(typed_lower):
+        return 1
+    # Last resort: let one near row rescue inflected or sparse search pages,
+    # but never merge every surrounding phrase into the saved meaning list.
+    if typed_lower in row_lower or row_lower in typed_lower:
+        return 2
+    return None
+
+
+def _simple_lemma_key(value: str) -> str:
+    text = re.sub(r"[^a-z]+", "", value.lower())
+    for suffix in ("ies", "es", "s"):
+        if len(text) > len(suffix) + 2 and text.endswith(suffix):
+            if suffix == "ies":
+                return text[: -len(suffix)] + "y"
+            return text[: -len(suffix)]
+    return text
 
 
 def _parse_meaning_groups(soup) -> list[MeaningGroup]:
@@ -247,7 +316,7 @@ def _parse_meaning_groups(soup) -> list[MeaningGroup]:
 
     if current_pos or current_senses:
         groups.append(MeaningGroup(pos=current_pos, senses=current_senses))
-    return groups
+    return _renumber_groups(groups)
 
 
 def _iter_sense_nodes(mean_list_node):
@@ -280,7 +349,7 @@ def _parse_sense(sense_node, fallback_number: int) -> Sense | None:
 
     number = extract_number(number_node)
     gloss_node = cont.find("span", class_="mean") if cont else None
-    gloss = text_or_empty(gloss_node)
+    gloss = _clean_meaning_gloss(text_or_empty(gloss_node))
 
     examples = _parse_examples(sense_node)
     sub_senses: list[SubSense] = []
@@ -297,6 +366,36 @@ def _parse_sense(sense_node, fallback_number: int) -> Sense | None:
     if not gloss and not sub_senses:
         return None
     return Sense(number=number or fallback_number, gloss=gloss, sub_senses=sub_senses)
+
+
+def _renumber_groups(groups: list[MeaningGroup]) -> list[MeaningGroup]:
+    for group in groups:
+        for index, sense in enumerate(group.senses, start=1):
+            sense.number = index
+    return groups
+
+
+def _clean_meaning_gloss(text: str) -> str:
+    gloss = _normalize_gloss_text(text)
+    if not gloss:
+        return ""
+    gloss = _REFERENCE_RE.sub(" ", gloss)
+    gloss = re.sub(r"\s+", " ", gloss).strip(" .;")
+    if not _is_usable_korean_gloss(gloss):
+        return ""
+    return gloss
+
+
+def _normalize_gloss_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def _is_usable_korean_gloss(gloss: str) -> bool:
+    if not _HANGUL_RE.search(gloss):
+        return False
+    chunks = re.findall(r"[가-힣]+", gloss)
+    meaningful = [chunk for chunk in chunks if chunk not in _GLOSS_STOPWORDS]
+    return bool(meaningful)
 
 
 def _parse_examples(sense_node) -> list[Example]:
