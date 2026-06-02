@@ -20,6 +20,13 @@ from PySide6 import QtCore
 
 log = logging.getLogger(__name__)
 
+SPACY_EN_MODEL_VERSION = "3.8.0"
+SPACY_EN_MODEL_WHEEL_URL = (
+    "https://github.com/explosion/spacy-models/releases/download/"
+    f"en_core_web_sm-{SPACY_EN_MODEL_VERSION}/"
+    f"en_core_web_sm-{SPACY_EN_MODEL_VERSION}-py3-none-any.whl"
+)
+
 
 def brew_available() -> bool:
     return shutil.which("brew") is not None
@@ -201,8 +208,14 @@ class KokoroInstallWorker(_BaseInstallWorker):
             self.finished.emit(False, model_msg)
             return
 
+        en_cmd = [
+            sys.executable, "-m", "pip", "install",
+            "--upgrade", "--disable-pip-version-check",
+            "--retries", "10", "--timeout", "60",
+            SPACY_EN_MODEL_WHEEL_URL,
+        ]
         en_ok, en_msg = self._run(
-            [sys.executable, "-m", "spacy", "download", "en_core_web_sm"],
+            en_cmd,
             "영어 G2P 모델 설치",
             timeout=900,
         )

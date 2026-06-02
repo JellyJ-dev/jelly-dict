@@ -11,6 +11,8 @@ PYTHON_COMMAND_FILE="${APP_DIR}/.python_cmd"
 SETUP_STATE_FILE="${APP_DIR}/.quickstart_ok"
 LOG_DIR="${APP_DIR}/.jelly_dict/logs"
 QUICKSTART_LOG="${LOG_DIR}/quickstart.log"
+SPACY_EN_MODEL_VERSION="3.8.0"
+SPACY_EN_MODEL_WHEEL_URL="https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-${SPACY_EN_MODEL_VERSION}/en_core_web_sm-${SPACY_EN_MODEL_VERSION}-py3-none-any.whl"
 
 WITH_TTS=0
 RUN_AFTER=0
@@ -529,6 +531,14 @@ EOF
   return 1
 }
 
+install_spacy_english_model() {
+  # Avoid `python -m spacy download`, which first fetches compatibility.json
+  # from raw.githubusercontent.com and can fail before pip reaches the wheel.
+  run_logged "Kokoro 영어 G2P 모델 설치" "$(python_command)" -m pip install \
+    --upgrade --disable-pip-version-check --retries 10 --timeout 60 \
+    "${SPACY_EN_MODEL_WHEEL_URL}"
+}
+
 check_tts_packages() {
   "$(python_command)" - <<'PY'
 import importlib.util
@@ -857,7 +867,7 @@ install_requirements_or_explain
 if [[ "${WITH_TTS}" -eq 1 ]]; then
   run_logged "TTS Python 패키지 설치" "$(python_command)" -m pip install -r requirements-tts.txt
   run_logged "Kokoro 로컬 모델 캐시 설치" "$(python_command)" -c 'from huggingface_hub import snapshot_download; snapshot_download("hexgrad/Kokoro-82M", allow_patterns=["config.json", "kokoro-v1_0.pth", "voices/af_heart.pt", "voices/jf_alpha.pt", "voices/jf_gongitsune.pt", "voices/jm_kumo.pt"])'
-  run_logged "Kokoro 영어 G2P 모델 설치" "$(python_command)" -m spacy download en_core_web_sm
+  install_spacy_english_model
   run_logged "Kokoro 일본어 사전 설치" "$(python_command)" -m unidic download
 fi
 

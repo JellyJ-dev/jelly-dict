@@ -121,6 +121,20 @@ def test_quickstart_qt_check_does_not_create_gui_application():
     assert "QApplication" not in qt_check
 
 
+def test_kokoro_spacy_model_install_uses_direct_wheel_url():
+    quickstart = _read(APP_FILES_ROOT / "scripts" / "quickstart.sh")
+    worker = _read(JELLY_ROOT / "app" / "ui" / "tts_install_worker.py")
+
+    assert 'SPACY_EN_MODEL_VERSION="3.8.0"' in quickstart
+    assert "github.com/explosion/spacy-models/releases/download" in quickstart
+    assert "en_core_web_sm-${SPACY_EN_MODEL_VERSION}" in quickstart
+    assert 'SPACY_EN_MODEL_VERSION = "3.8.0"' in worker
+    assert "github.com/explosion/spacy-models/releases/download" in worker
+    assert "en_core_web_sm-{SPACY_EN_MODEL_VERSION}" in worker
+    assert "spacy download en_core_web_sm" not in quickstart
+    assert '"spacy", "download"' not in worker
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [
