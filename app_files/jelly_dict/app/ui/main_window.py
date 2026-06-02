@@ -214,6 +214,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._macos_titlebar_chrome_applied = False
         self._app_event_filter_installed = False
         self._app_state_signal_connected = False
+        self._titlebar_drag_origin: QtCore.QPoint | None = None
+        self._titlebar_drag_window_origin: QtCore.QPoint | None = None
         self.setWindowTitle("")
         self.setWindowFlag(QtCore.Qt.WindowType.ExpandedClientAreaHint, True)
         self.setWindowFlag(QtCore.Qt.WindowType.NoTitleBarBackgroundHint, True)
@@ -309,8 +311,15 @@ class MainWindow(QtWidgets.QMainWindow):
             if widget is not None and widget.window() is self:
                 window_pos = self.mapFromGlobal(event.globalPosition().toPoint())
                 if self._should_handle_titlebar_double_click(event, window_pos):
+                    self._clear_titlebar_drag()
                     self._perform_titlebar_zoom()
                     event.accept()
+                    return True
+        if isinstance(event, QtGui.QMouseEvent):
+            widget = watched if isinstance(watched, QtWidgets.QWidget) else None
+            if widget is not None and widget.window() is self:
+                window_pos = self.mapFromGlobal(event.globalPosition().toPoint())
+                if self._handle_titlebar_drag_event(event, window_pos):
                     return True
         return super().eventFilter(watched, event)
 
@@ -320,10 +329,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
         if self._should_handle_titlebar_double_click(event):
+            self._clear_titlebar_drag()
             self._perform_titlebar_zoom()
             event.accept()
             return
         super().mouseDoubleClickEvent(event)
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if self._handle_titlebar_drag_event(event):
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if self._handle_titlebar_drag_event(event):
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if self._handle_titlebar_drag_event(event):
+            return
+        super().mouseReleaseEvent(event)
 
     @QtCore.Slot(QtCore.Qt.ApplicationState)
     def _on_application_state_changed(self, state: QtCore.Qt.ApplicationState) -> None:
@@ -364,6 +389,59 @@ class MainWindow(QtWidgets.QMainWindow):
             return False
         y_pos = window_pos.y() if window_pos is not None else event.position().y()
         return 0 <= y_pos <= MACOS_TITLEBAR_DOUBLE_CLICK_HEIGHT
+
+    def _should_handle_titlebar_drag(
+        self,
+        event: QtGui.QMouseEvent,
+        window_pos: QtCore.QPoint | None = None,
+    ) -> bool:
+        if sys.platform != "darwin" or event.button() != QtCore.Qt.LeftButton:
+            return False
+        y_pos = window_pos.y() if window_pos is not None else event.position().y()
+        return 0 <= y_pos <= MACOS_TITLEBAR_DOUBLE_CLICK_HEIGHT
+
+    def _handle_titlebar_drag_event(
+        self,
+        event: QtGui.QMouseEvent,
+        window_pos: QtCore.QPoint | None = None,
+    ) -> bool:
+        if sys.platform != "darwin":
+            return False
+        event_type = event.type()
+        if event_type == QtCore.QEvent.Type.MouseButtonPress:
+            if not self._should_handle_titlebar_drag(event, window_pos):
+                self._clear_titlebar_drag()
+                return False
+            self._titlebar_drag_origin = event.globalPosition().toPoint()
+            self._titlebar_drag_window_origin = self.frameGeometry().topLeft()
+            return False
+        if event_type == QtCore.QEvent.Type.MouseMove:
+            if self._titlebar_drag_origin is None:
+                return False
+            if not (event.buttons() & QtCore.Qt.LeftButton):
+                self._clear_titlebar_drag()
+                return False
+            global_pos = event.globalPosition().toPoint()
+            delta = global_pos - self._titlebar_drag_origin
+            if delta.manhattanLength() < QtWidgets.QApplication.startDragDistance():
+                return False
+            window_handle = self.windowHandle()
+            if window_handle is not None and window_handle.startSystemMove():
+                self._clear_titlebar_drag()
+                event.accept()
+                return True
+            if self._titlebar_drag_window_origin is not None:
+                self.move(self._titlebar_drag_window_origin + delta)
+                event.accept()
+                return True
+        if event_type == QtCore.QEvent.Type.MouseButtonRelease:
+            self._clear_titlebar_drag()
+            return False
+        return False
+
+    def _clear_titlebar_drag(self) -> None:
+        self._titlebar_drag_origin = None
+        self._titlebar_drag_window_origin = None
 
     def _perform_titlebar_zoom(self) -> None:
         app = QtWidgets.QApplication.instance()

@@ -45,6 +45,10 @@ def test_main_window_hides_native_macos_titlebar_chrome():
     assert "performZoom_" in source
     assert "MouseButtonDblClick" in source
     assert "globalPosition()" in source
+    assert "_titlebar_drag_origin" in source
+    assert "MouseMove" in source
+    assert "startSystemMove()" in source
+    assert "frameGeometry().topLeft()" in source
     assert "removeEventFilter(self)" in source
     assert "NSToolbar" not in source
     assert "setUnifiedTitleAndToolBarOnMac" not in source
