@@ -150,5 +150,53 @@ def test_entry_detail_tts_button_tracks_settings(qtbot):
     qtbot.addWidget(disabled)
     qtbot.addWidget(enabled)
 
-    assert not disabled.tts_button.isEnabled()
+    assert disabled.tts_button.isEnabled()
+    assert disabled.tts_button.isCheckable()
+    assert not disabled.tts_button.isChecked()
     assert enabled.tts_button.isEnabled()
+    assert enabled.tts_button.isCheckable()
+    assert enabled.tts_button.isChecked()
+
+
+def test_entry_detail_tts_button_reports_missing_audio(qtbot):
+    entry = VocabularyEntry(language="en", word="distribution", meanings_summary="1.유통")
+    dialog = EntryDetailDialog(entry, settings=Settings(tts_enabled=False))
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    dialog.tts_button.click()
+
+    toast = dialog.findChild(QtWidgets.QFrame, "entryDetailTtsToast")
+    assert toast is not None
+    assert toast.isVisible()
+    assert "TTS가 없는 단어입니다." in toast.findChild(
+        QtWidgets.QLabel,
+        "entryDetailTtsToastMessage",
+    ).text()
+
+
+def test_entry_detail_replays_cached_tts_without_worker(qtbot, monkeypatch, tmp_path):
+    audio_path = tmp_path / "cached.mp3"
+    audio_path.write_bytes(b"fake")
+    entry = VocabularyEntry(language="en", word="distribution", meanings_summary="1.유통")
+    dialog = EntryDetailDialog(
+        entry,
+        settings=Settings(
+            tts_enabled=True,
+            tts_engine_en="kokoro",
+            tts_voice_en="af_heart",
+        ),
+    )
+    qtbot.addWidget(dialog)
+    played: list[object] = []
+
+    monkeypatch.setattr(
+        "app.ui.entry_detail_dialog.cached_audio_path_for_text",
+        lambda text, language, settings: audio_path,
+    )
+    monkeypatch.setattr(dialog, "_play_audio_file", lambda path: played.append(path))
+
+    dialog._request_tts_for_text("distribution")
+
+    assert played == [audio_path]
+    assert dialog._tts_thread is None

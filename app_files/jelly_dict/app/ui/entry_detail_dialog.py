@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.core.models import VocabularyEntry, build_meanings_summary, collect_examples_flat
-from app.services.tts_audio_service import synthesize_word_audio, tts_configured
+from app.services.tts_audio_service import cached_audio_path_for_text, tts_configured
+from app.services.tts_process_service import synthesize_text_audio_in_process
 from app.storage.settings_store import Settings
 from app.ui.dialog_shortcuts import install_standard_close_shortcut
 
@@ -25,6 +26,7 @@ class EntryDetailDialog(QtWidgets.QDialog):
         self._settings = settings
         self._tts_thread: QtCore.QThread | None = None
         self._tts_worker: _DetailTtsWorker | None = None
+        self._tts_click_enabled = tts_configured(settings, entry.language)
         self._tts_player = None
         self.setObjectName("entryDetailDialog")
         self.setWindowTitle(_primary_form(entry.word) or "단어 상세")
@@ -47,8 +49,9 @@ class EntryDetailDialog(QtWidgets.QDialog):
         close_btn.clicked.connect(self.accept)
         header.addWidget(close_btn)
 
-        title = QtWidgets.QLabel(_primary_form(self._entry.word))
+        title = _TtsTextLabel(_primary_form(self._entry.word), _primary_form(self._entry.word))
         title.setObjectName("entryDetailTitle")
+        title.clicked.connect(self._request_tts_for_text)
         title.setAlignment(QtCore.Qt.AlignCenter)
         title.setTextFormat(QtCore.Qt.PlainText)
         title.setWordWrap(True)
@@ -57,8 +60,9 @@ class EntryDetailDialog(QtWidgets.QDialog):
         full_form = (self._entry.word or "").strip()
         primary = _primary_form(full_form)
         if full_form and full_form != primary:
-            full_label = QtWidgets.QLabel(full_form)
+            full_label = _TtsTextLabel(full_form, full_form)
             full_label.setObjectName("entryDetailMeta")
+            full_label.clicked.connect(self._request_tts_for_text)
             full_label.setAlignment(QtCore.Qt.AlignCenter)
             full_label.setTextFormat(QtCore.Qt.PlainText)
             full_label.setWordWrap(True)
@@ -103,9 +107,11 @@ class EntryDetailDialog(QtWidgets.QDialog):
         controls.addStretch(1)
         self.tts_button = QtWidgets.QPushButton("TTS")
         self.tts_button.setObjectName("entryDetailTtsButton")
-        self.tts_button.setIcon(_dot_icon(enabled=tts_configured(self._settings, self._entry.language)))
+        self.tts_button.setCheckable(True)
+        self.tts_button.setChecked(self._tts_click_enabled)
+        self.tts_button.setIcon(_dot_icon(enabled=self._tts_click_enabled))
         self.tts_button.setIconSize(QtCore.QSize(9, 9))
-        self.tts_button.clicked.connect(self._play_tts)
+        self.tts_button.clicked.connect(self._on_tts_toggle)
         self._sync_tts_button_state()
         controls.addWidget(self.tts_button)
         layout.addLayout(controls)
@@ -135,31 +141,61 @@ class EntryDetailDialog(QtWidgets.QDialog):
         self._add_text_block(body_layout, "메모", self._entry.memo)
         self._add_source(body_layout)
         body_layout.addStretch(1)
+        self._tts_toast = _DetailToast(self)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 - Qt API
         if self._tts_thread is not None and self._tts_thread.isRunning():
-            self.tts_button.setToolTip("TTS 생성이 끝난 뒤 닫을 수 있습니다.")
+            self._show_tts_message("TTS 생성이 끝난 뒤 닫을 수 있습니다.")
             event.ignore()
             return
         super().closeEvent(event)
 
     def _sync_tts_button_state(self) -> None:
         configured = tts_configured(self._settings, self._entry.language)
-        self.tts_button.setEnabled(configured)
+        if not configured:
+            self._tts_click_enabled = False
+            self.tts_button.setChecked(False)
+        else:
+            self._tts_click_enabled = self.tts_button.isChecked()
+        self.tts_button.setEnabled(True)
+        self.tts_button.setIcon(_dot_icon(enabled=configured and self._tts_click_enabled))
         self.tts_button.setToolTip(
-            "단어 음성 재생" if configured else "설정에서 TTS를 켜고 음성을 선택하세요."
+            "단어/예문 클릭 재생 활성" if configured and self._tts_click_enabled
+            else "단어/예문 클릭 재생 비활성"
         )
 
-    def _play_tts(self) -> None:
+    def _on_tts_toggle(self, checked: bool) -> None:
+        if not tts_configured(self._settings, self._entry.language):
+            self._tts_click_enabled = False
+            self.tts_button.setChecked(False)
+            self._sync_tts_button_state()
+            self._show_tts_message("TTS가 없는 단어입니다.")
+            return
+        self._tts_click_enabled = checked
+        self._sync_tts_button_state()
+
+    @QtCore.Slot(str)
+    def _request_tts_for_text(self, text: str) -> None:
+        text = (text or "").strip()
+        if not self._tts_click_enabled:
+            return
         if self._settings is None or self._tts_thread is not None:
+            if self._tts_thread is not None:
+                self._show_tts_message("TTS 생성 중입니다.")
             return
         if not tts_configured(self._settings, self._entry.language):
             self._sync_tts_button_state()
+            self._show_tts_message("TTS가 없는 단어입니다.")
             return
-        self.tts_button.setEnabled(False)
-        self.tts_button.setText("...")
+        if not text:
+            self._show_tts_message("TTS가 없는 단어입니다.")
+            return
+        cached = cached_audio_path_for_text(text, self._entry.language, self._settings)
+        if cached is not None:
+            self._play_audio_file(cached)
+            return
         self._tts_thread = QtCore.QThread(self)
-        self._tts_worker = _DetailTtsWorker(self._entry, self._settings)
+        self._tts_worker = _DetailTtsWorker(text, self._entry.language, self._settings)
         self._tts_worker.moveToThread(self._tts_thread)
         self._tts_thread.started.connect(self._tts_worker.run)
         self._tts_worker.finished.connect(self._on_tts_finished)
@@ -170,13 +206,11 @@ class EntryDetailDialog(QtWidgets.QDialog):
 
     @QtCore.Slot(bool, str, object)
     def _on_tts_finished(self, ok: bool, message: str, path_obj: object) -> None:
-        self.tts_button.setText("TTS")
         self._sync_tts_button_state()
         if ok and isinstance(path_obj, Path):
             self._play_audio_file(path_obj)
             return
-        if message:
-            self.tts_button.setToolTip(message)
+        self._show_tts_message(message or "TTS가 없는 단어입니다.")
 
     @QtCore.Slot()
     def _clear_tts_worker(self) -> None:
@@ -195,6 +229,9 @@ class EntryDetailDialog(QtWidgets.QDialog):
         player.setSource(QtCore.QUrl.fromLocalFile(str(path)))
         player.play()
         self._tts_player = (player, audio_out)
+
+    def _show_tts_message(self, message: str) -> None:
+        self._tts_toast.show_message(message)
 
     def _add_meanings(self, layout: QtWidgets.QVBoxLayout) -> None:
         if self._entry.meaning_groups:
@@ -233,8 +270,9 @@ class EntryDetailDialog(QtWidgets.QDialog):
             text = ex.source_text_plain or ex.source_text
             if ex.translation_ko:
                 text += f"\n{ex.translation_ko}"
-            row = QtWidgets.QLabel(text)
+            row = _TtsTextLabel(text, ex.source_text_plain or ex.source_text)
             row.setObjectName("entryDetailExampleRow")
+            row.clicked.connect(self._request_tts_for_text)
             row.setTextFormat(QtCore.Qt.PlainText)
             row.setWordWrap(True)
             layout.addWidget(row)
@@ -379,22 +417,108 @@ def _dot_icon(*, enabled: bool) -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
+class _TtsTextLabel(QtWidgets.QLabel):
+    clicked = QtCore.Signal(str)
+
+    def __init__(self, text: str, tts_text: str) -> None:
+        super().__init__(text)
+        self._tts_text = tts_text
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if event.button() == QtCore.Qt.LeftButton:
+            self.clicked.emit(self._tts_text)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
+class _DetailToast(QtWidgets.QFrame):
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("entryDetailTtsToast")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        self.message_label = QtWidgets.QLabel("")
+        self.message_label.setObjectName("entryDetailTtsToastMessage")
+        self.message_label.setTextFormat(QtCore.Qt.PlainText)
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(14, 8, 14, 8)
+        layout.addWidget(self.message_label)
+        self._opacity = QtWidgets.QGraphicsOpacityEffect(self)
+        self._opacity.setOpacity(0.0)
+        self.setGraphicsEffect(self._opacity)
+        self._timer = QtCore.QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._fade_out)
+        self._fade = QtCore.QPropertyAnimation(self._opacity, b"opacity", self)
+        self._fade.setDuration(220)
+        self._fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._fade.finished.connect(self._finish_fade)
+        parent.installEventFilter(self)
+        self.hide()
+
+    def show_message(self, message: str) -> None:
+        message = (message or "").strip()
+        if not message:
+            return
+        self._timer.stop()
+        self._fade.stop()
+        self.message_label.setText(message)
+        self.adjustSize()
+        self._place()
+        self._opacity.setOpacity(1.0)
+        self.show()
+        self.raise_()
+        self._timer.start(2600)
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if watched is self.parent() and event.type() == QtCore.QEvent.Resize:
+            self._place()
+        return super().eventFilter(watched, event)
+
+    def _place(self) -> None:
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        hint = self.sizeHint()
+        width = min(max(hint.width(), 220), max(220, parent.width() - 56))
+        height = max(hint.height(), 34)
+        self.resize(width, height)
+        self.move((parent.width() - width) // 2, max(18, parent.height() - height - 26))
+
+    def _fade_out(self) -> None:
+        self._fade.stop()
+        self._fade.setStartValue(self._opacity.opacity())
+        self._fade.setEndValue(0.0)
+        self._fade.start()
+
+    def _finish_fade(self) -> None:
+        if self._opacity.opacity() <= 0.01:
+            self.hide()
+
+
 class _DetailTtsWorker(QtCore.QObject):
     finished = QtCore.Signal(bool, str, object)
 
-    def __init__(self, entry: VocabularyEntry, settings: Settings) -> None:
+    def __init__(self, text: str, language: str, settings: Settings) -> None:
         super().__init__()
-        self._entry = entry
+        self._text = text
+        self._language = language
         self._settings = settings
 
     @QtCore.Slot()
     def run(self) -> None:
         try:
-            path = synthesize_word_audio(self._entry, self._settings)
+            path = synthesize_text_audio_in_process(
+                self._text,
+                self._language,
+                self._settings,
+            )
         except Exception as exc:
             self.finished.emit(False, f"TTS 생성 실패: {exc}", None)
             return
         if path is None:
-            self.finished.emit(False, "TTS 음성을 생성할 수 없습니다.", None)
+            self.finished.emit(False, "TTS가 없는 단어입니다.", None)
             return
         self.finished.emit(True, "", path)

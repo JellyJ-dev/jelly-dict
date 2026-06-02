@@ -197,6 +197,7 @@ def test_macos_app_launcher_embeds_python_instead_of_execing_python():
 
     assert "Py_InitializeFromConfig" in build_script
     assert "PyImport_ImportModule(\"app.main\")" in build_script
+    assert 'setenv("JELLY_DICT_PYTHON", venv_python, 1);' in build_script
     assert "launcher: native embedded Python" in build_script
     assert "execv(\"/bin/bash\"" not in build_script
     assert "exec python -m app.main" not in build_script

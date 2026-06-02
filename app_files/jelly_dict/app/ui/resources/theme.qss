@@ -1335,8 +1335,20 @@ QPushButton#entryDetailTtsButton:hover {
     border-color: #4b4b48;
     color: #f1ece2;
 }
-QPushButton#entryDetailTtsButton:disabled {
-    color: #77736d;
+QPushButton#entryDetailTtsButton:checked {
+    background: rgba(232, 116, 79, 0.12);
+    border-color: rgba(232, 116, 79, 0.42);
+    color: #f1ece2;
+}
+QFrame#entryDetailTtsToast {
+    background: rgba(74, 74, 68, 0.72);
+    border: none;
+    border-radius: 17px;
+}
+QLabel#entryDetailTtsToastMessage {
+    color: rgba(241, 236, 226, 0.92);
+    font-size: 13px;
+    font-weight: 700;
 }
 QScrollArea#entryDetailScroll,
 QScrollArea#entryDetailScroll > QWidget > QWidget {

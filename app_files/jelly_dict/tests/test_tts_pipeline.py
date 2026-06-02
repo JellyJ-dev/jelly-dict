@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import pytest
+import subprocess
 
 from app.anki.tts import cache as tts_cache
 from app.anki.tts.base import NoTTSProvider, ProviderInfo, TTSResult
@@ -34,6 +35,9 @@ class _Settings:
 
     def excel_path_for(self, language: str) -> str:
         return self.excel_path_ja if language == "ja" else self.excel_path_en
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class _FakeProvider:
@@ -155,6 +159,49 @@ def test_pipeline_uses_wordbook_mp3_folder(isolated_runtime, monkeypatch):
     assert path is not None
     assert path.parent == excel_path.parent / "mp3"
     assert path.exists()
+
+
+def test_process_synth_reuses_cached_audio_without_subprocess(
+    isolated_runtime,
+    monkeypatch,
+):
+    from app.services.tts_audio_service import expected_audio_path_for_text
+    from app.services.tts_process_service import synthesize_text_audio_in_process
+
+    excel_path = isolated_runtime / "books" / "vocab_en.xlsx"
+    s = _Settings(excel_path_en=str(excel_path))
+    path = expected_audio_path_for_text("hello", "en", s)
+    assert path is not None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(FAKE_MP3)
+
+    def fail_run(*args, **kwargs):
+        raise AssertionError("subprocess should not run for cached audio")
+
+    monkeypatch.setattr("subprocess.run", fail_run)
+
+    assert synthesize_text_audio_in_process("hello", "en", s) == path
+
+
+def test_process_synth_rejects_invalid_worker_audio(isolated_runtime, monkeypatch):
+    from app.services.tts_process_service import synthesize_text_audio_in_process
+
+    excel_path = isolated_runtime / "books" / "vocab_en.xlsx"
+    s = _Settings(excel_path_en=str(excel_path))
+    path = isolated_runtime / "invalid.mp3"
+    path.write_bytes(b"not-audio")
+
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=f'{{"ok": true, "path": "{path}"}}',
+            stderr="",
+        ),
+    )
+
+    assert synthesize_text_audio_in_process("hello", "en", s) is None
 
 
 def test_pre_generate_entry_audio_includes_examples(isolated_runtime, monkeypatch):

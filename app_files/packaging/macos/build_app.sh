@@ -328,6 +328,7 @@ int main(void) {
 
   setenv("JELLY_DICT_APP_BUNDLE", "1", 1);
   setenv("JELLY_DICT_APP_DIR", app_dir, 1);
+  setenv("JELLY_DICT_PYTHON", venv_python, 1);
   setenv("VIRTUAL_ENV", venv_dir, 1);
   setenv("PYTHONNOUSERSITE", "1", 1);
   prepend_path(venv_bin);

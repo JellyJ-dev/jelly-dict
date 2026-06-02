@@ -60,20 +60,6 @@ def runtime_status_summary(settings: Settings) -> str:
     return f"EN: {excel_en} · JA: {excel_ja} · {provider} · {cache}"
 
 
-def _tts_pre_generation_pipeline_key(settings: Settings) -> tuple[object, ...]:
-    return (
-        settings.tts_engine_en,
-        settings.tts_engine_ja,
-        settings.tts_voice_en,
-        settings.tts_voice_ja,
-        settings.tts_bitrate,
-        settings.tts_sample_rate,
-        settings.excel_path_for("en"),
-        settings.excel_path_for("ja"),
-        settings.voicevox_url,
-    )
-
-
 def _tts_pre_generation_entry_key(entry: VocabularyEntry) -> tuple[str, str]:
     return (entry.language, normalize_word_key(entry.word, entry.language))
 
@@ -294,6 +280,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tts_pregen_lock = threading.Lock()
         self._tts_pregen_queue: list[tuple[Settings, VocabularyEntry]] = []
         self._tts_pregen_active = False
+        self._tts_pregen_start_timer = QtCore.QTimer(self)
+        self._tts_pregen_start_timer.setSingleShot(True)
+        self._tts_pregen_start_timer.setInterval(1800)
+        self._tts_pregen_start_timer.timeout.connect(self._start_tts_pre_generation_worker)
         self._ocr_temp_path: Path | None = None
         self._browser_prewarm_started = False
         self._browser_prewarm_timer = QtCore.QTimer(self)
@@ -1582,37 +1572,35 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._tts_pregen_active = True
                 should_start = True
         if should_start:
-            threading.Thread(
-                target=self._run_tts_pre_generation_loop,
-                name="jelly-dict-tts-pregen",
-                daemon=True,
-            ).start()
+            self._tts_pregen_start_timer.start()
+
+    def _start_tts_pre_generation_worker(self) -> None:
+        with self._tts_pregen_lock:
+            if not self._tts_pregen_queue:
+                self._tts_pregen_active = False
+                return
+        threading.Thread(
+            target=self._run_tts_pre_generation_loop,
+            name="jelly-dict-tts-pregen",
+            daemon=True,
+        ).start()
 
     def _run_tts_pre_generation_loop(self) -> None:
-        from app.anki.tts.pipeline import TTSPipeline
-        from app.services.tts_audio_service import pre_generate_entry_audio_with_pipeline
-
-        pipelines: dict[tuple[object, ...], TTSPipeline] = {}
+        from app.services.tts_process_service import pre_generate_entries_audio_in_process
 
         while True:
             with self._tts_pregen_lock:
                 if not self._tts_pregen_queue:
                     self._tts_pregen_active = False
                     return
-                settings, entry = self._tts_pregen_queue.pop(0)
+                jobs = list(self._tts_pregen_queue)
+                self._tts_pregen_queue.clear()
             try:
-                key = _tts_pre_generation_pipeline_key(settings)
-                pipeline = pipelines.get(key)
-                if pipeline is None:
-                    pipeline = TTSPipeline(settings)
-                    pipelines[key] = pipeline
-                generated = pre_generate_entry_audio_with_pipeline(
-                    entry, settings, pipeline,
-                )
+                generated = pre_generate_entries_audio_in_process(jobs)
                 if generated:
-                    log.info("TTS pre-generated %s file(s) for %s", generated, entry.word)
+                    log.info("TTS pre-generated %s file(s)", generated)
             except Exception as exc:
-                log.warning("TTS pre-generation failed for %s: %s", entry.word, exc)
+                log.warning("TTS pre-generation batch failed: %s", exc)
 
     def _open_word_list_dialog(self, language: str = "en") -> None:
         from app.ui.word_list_view import WordListDialog
