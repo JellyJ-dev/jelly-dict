@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PySide6 import QtGui
+from PySide6 import QtGui, QtWidgets
 
 from app.storage.settings_store import SettingsStore
-from app.ui.settings_view import SettingsDialog
+from app.ui.settings_view import SettingsDialog, _settings_combo
 
 
 class _RunningThread:
@@ -42,3 +42,13 @@ def test_settings_dialog_blocks_close_while_tts_sample_is_running(qtbot, tmp_pat
     assert dialog.tts_license_label.text() == "샘플 생성이 끝난 뒤 다시 시도하세요."
     dialog._sample_thread = None
     dialog._wait_for_status_probe()
+
+
+def test_settings_combo_uses_qt_popup_view_instead_of_native_macos_menu(qtbot):
+    combo = _settings_combo()
+    qtbot.addWidget(combo)
+
+    assert isinstance(combo.view(), QtWidgets.QListView)
+    assert combo.view().objectName() == "settingsComboPopup"
+    assert combo.maxVisibleItems() == 8
+    assert combo.style().objectName().lower() == "fusion"

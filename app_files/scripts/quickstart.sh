@@ -536,7 +536,7 @@ from importlib import metadata
 import re
 import sys
 
-required = ["soundfile"]
+required = ["soundfile", "kokoro", "spacy", "en_core_web_sm", "misaki", "pyopenjtalk"]
 missing = [name for name in required if importlib.util.find_spec(name) is None]
 if missing:
     print("  ✗ missing TTS Python packages: " + ", ".join(missing))
@@ -545,6 +545,8 @@ if missing:
 checks = [
     ("kokoro", "kokoro", (0, 3), ">=0.3"),
     ("soundfile", "soundfile", (0, 12), ">=0.12"),
+    ("spacy", "spacy", (3, 8), ">=3.8"),
+    ("misaki", "misaki", (0, 6), ">=0.6"),
 ]
 
 def version_tuple(value):
@@ -568,6 +570,27 @@ if bad:
     print("  ✗ TTS package version mismatch:")
     for item in bad:
         print("    - " + item)
+    sys.exit(1)
+
+from pathlib import Path
+root = Path.home() / ".cache" / "huggingface" / "hub" / "models--hexgrad--Kokoro-82M"
+ref = root / "refs" / "main"
+snapshot = root / "snapshots" / ref.read_text(encoding="utf-8").strip() if ref.exists() else None
+files = [
+    "config.json",
+    "kokoro-v1_0.pth",
+    "voices/af_heart.pt",
+    "voices/jf_alpha.pt",
+    "voices/jf_gongitsune.pt",
+    "voices/jm_kumo.pt",
+]
+missing_files = []
+if snapshot is None or not snapshot.exists():
+    missing_files = files
+else:
+    missing_files = [name for name in files if not (snapshot / name).exists()]
+if missing_files:
+    print("  ✗ missing Kokoro local model cache: " + ", ".join(missing_files))
     sys.exit(1)
 
 print("  ✓ TTS Python packages and versions")
@@ -833,6 +856,9 @@ install_requirements_or_explain
 
 if [[ "${WITH_TTS}" -eq 1 ]]; then
   run_logged "TTS Python 패키지 설치" "$(python_command)" -m pip install -r requirements-tts.txt
+  run_logged "Kokoro 로컬 모델 캐시 설치" "$(python_command)" -c 'from huggingface_hub import snapshot_download; snapshot_download("hexgrad/Kokoro-82M", allow_patterns=["config.json", "kokoro-v1_0.pth", "voices/af_heart.pt", "voices/jf_alpha.pt", "voices/jf_gongitsune.pt", "voices/jm_kumo.pt"])'
+  run_logged "Kokoro 영어 G2P 모델 설치" "$(python_command)" -m spacy download en_core_web_sm
+  run_logged "Kokoro 일본어 사전 설치" "$(python_command)" -m unidic download
 fi
 
 run_logged "Playwright WebKit 설치" "$(python_command)" -m playwright install webkit

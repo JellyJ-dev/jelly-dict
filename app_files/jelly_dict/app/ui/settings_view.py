@@ -21,15 +21,22 @@ EDGE_TTS_INSTALL_HINT = "pipx install edge-tts"
 def _settings_combo() -> QtWidgets.QComboBox:
     combo = QtWidgets.QComboBox()
     combo.setObjectName("settingsCombo")
+    fusion_style = QtWidgets.QStyleFactory.create("Fusion")
+    if fusion_style is not None:
+        combo.setStyle(fusion_style)
     view = QtWidgets.QListView(combo)
     view.setObjectName("settingsComboPopup")
+    if fusion_style is not None:
+        view.setStyle(fusion_style)
     view.setFrameShape(QtWidgets.QFrame.NoFrame)
     view.setUniformItemSizes(True)
+    view.setAttribute(QtCore.Qt.WA_MacShowFocusRect, False)
     palette = view.palette()
     palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor("#30302d"))
     palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor("#e8744f"))
     view.setPalette(palette)
     combo.setView(view)
+    combo.setMaxVisibleItems(8)
     return combo
 
 
@@ -344,6 +351,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.tts_play_front_check = QtWidgets.QCheckBox("앞면 자동 재생")
         self.tts_play_back_check = QtWidgets.QCheckBox("뒷면 자동 재생")
         self.tts_play_examples_check = QtWidgets.QCheckBox("예문 음성도 생성")
+        self.tts_pre_generate_check = QtWidgets.QCheckBox("저장 후 TTS 미리 생성")
 
         self.tts_engine_en_combo = _settings_combo()
         self.tts_voice_en_combo = _settings_combo()
@@ -402,6 +410,7 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addRow("", self.tts_play_front_check)
         layout.addRow("", self.tts_play_back_check)
         layout.addRow("", self.tts_play_examples_check)
+        layout.addRow("", self.tts_pre_generate_check)
         self._add_form_row(layout, "영어 엔진", self.tts_engine_en_combo)
         self._add_form_row(layout, "영어 음성", en_row)
         self._add_form_row(layout, "일본어 엔진", self.tts_engine_ja_combo)
@@ -626,6 +635,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.tts_play_front_check.setChecked(settings.tts_play_front)
         self.tts_play_back_check.setChecked(settings.tts_play_back)
         self.tts_play_examples_check.setChecked(settings.tts_play_examples)
+        self.tts_pre_generate_check.setChecked(settings.tts_pre_generate_on_save)
 
         self._populate_engine_combo(self.tts_engine_en_combo, "en")
         self._populate_engine_combo(self.tts_engine_ja_combo, "ja")
@@ -705,6 +715,7 @@ class SettingsDialog(QtWidgets.QDialog):
             tts_play_front=self.tts_play_front_check.isChecked(),
             tts_play_back=self.tts_play_back_check.isChecked(),
             tts_play_examples=self.tts_play_examples_check.isChecked(),
+            tts_pre_generate_on_save=self.tts_pre_generate_check.isChecked(),
             tts_engine_en=en_engine,
             tts_engine_ja=ja_engine,
             tts_voice_en=en_voice,
@@ -1045,7 +1056,7 @@ class SettingsDialog(QtWidgets.QDialog):
             )
 
     def _play_sample(self, language: str) -> None:
-        from app.anki.tts.cache import cache_path
+        from app.anki.tts.cache import cache_path, wordbook_audio_dir
 
         if language == "en":
             engine = self.tts_engine_en_combo.currentData()
@@ -1075,28 +1086,28 @@ class SettingsDialog(QtWidgets.QDialog):
             text,
             bitrate=getattr(settings, "tts_bitrate", ""),
             sample_rate=getattr(settings, "tts_sample_rate", None),
+            cache_dir=wordbook_audio_dir(settings, language),
         )
         if out_path.exists():
             self._play_audio_file(out_path)
             return
 
         # First time for this (engine, voice) — synthesis happens on a
-        # background thread because Kokoro's first call downloads a
-        # ~327MB model and warms torch, which would freeze the UI.
+        # background thread because Kokoro warms torch and loads a large
+        # local model, which would freeze the UI.
         if getattr(self, "_sample_thread", None) is not None:
             return
         btn.setEnabled(False)
         btn.setText("…")
 
-        # Be honest about what's about to happen — Kokoro pulls the
-        # model weights from HuggingFace on first use.
+        # Be honest about what's about to happen. Runtime synthesis must
+        # never download; the model cache is prepared by the installer.
         if engine == "kokoro":
             from app.ui.tts_install_worker import kokoro_model_cache_size
 
             if kokoro_model_cache_size() < 100 * 1024 * 1024:  # < 100MB → not cached yet
                 self.tts_license_label.setText(
-                    "Kokoro 모델 가중치를 처음 1회 다운로드합니다 (~330MB). "
-                    "다음부터는 캐시에서 즉시 재생됩니다."
+                    "Kokoro 로컬 모델 캐시가 없습니다. 설정의 Kokoro 설치를 먼저 실행하세요."
                 )
             else:
                 self.tts_license_label.setText("샘플 생성 중…")
@@ -1149,9 +1160,15 @@ class SettingsDialog(QtWidgets.QDialog):
         self._sample_player = (player, audio_out)
 
     def _clear_tts_cache(self) -> None:
-        from app.anki.tts.cache import clear_cache
+        from app.anki.tts.cache import clear_cache, wordbook_audio_dir
 
-        n = clear_cache()
+        settings = self._store.load()
+        n = clear_cache(
+            [
+                wordbook_audio_dir(settings, "en"),
+                wordbook_audio_dir(settings, "ja"),
+            ]
+        )
         self.tts_cache_status.setText(f"{n}개 파일 삭제됨")
 
 

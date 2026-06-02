@@ -1,18 +1,31 @@
 from __future__ import annotations
 
 from html import escape
+from pathlib import Path
 from urllib.parse import urlparse
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.core.models import VocabularyEntry, build_meanings_summary, collect_examples_flat
+from app.services.tts_audio_service import synthesize_word_audio, tts_configured
+from app.storage.settings_store import Settings
 from app.ui.dialog_shortcuts import install_standard_close_shortcut
 
 
 class EntryDetailDialog(QtWidgets.QDialog):
-    def __init__(self, entry: VocabularyEntry, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(
+        self,
+        entry: VocabularyEntry,
+        parent: QtWidgets.QWidget | None = None,
+        *,
+        settings: Settings | None = None,
+    ) -> None:
         super().__init__(parent)
         self._entry = entry
+        self._settings = settings
+        self._tts_thread: QtCore.QThread | None = None
+        self._tts_worker: _DetailTtsWorker | None = None
+        self._tts_player = None
         self.setObjectName("entryDetailDialog")
         self.setWindowTitle(_primary_form(entry.word) or "단어 상세")
         self.resize(820, 760)
@@ -84,6 +97,19 @@ class EntryDetailDialog(QtWidgets.QDialog):
         divider_top.setFrameShape(QtWidgets.QFrame.HLine)
         layout.addWidget(divider_top)
 
+        controls = QtWidgets.QHBoxLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(8)
+        controls.addStretch(1)
+        self.tts_button = QtWidgets.QPushButton("TTS")
+        self.tts_button.setObjectName("entryDetailTtsButton")
+        self.tts_button.setIcon(_dot_icon(enabled=tts_configured(self._settings, self._entry.language)))
+        self.tts_button.setIconSize(QtCore.QSize(9, 9))
+        self.tts_button.clicked.connect(self._play_tts)
+        self._sync_tts_button_state()
+        controls.addWidget(self.tts_button)
+        layout.addLayout(controls)
+
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setObjectName("entryDetailScroll")
@@ -109,6 +135,66 @@ class EntryDetailDialog(QtWidgets.QDialog):
         self._add_text_block(body_layout, "메모", self._entry.memo)
         self._add_source(body_layout)
         body_layout.addStretch(1)
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 - Qt API
+        if self._tts_thread is not None and self._tts_thread.isRunning():
+            self.tts_button.setToolTip("TTS 생성이 끝난 뒤 닫을 수 있습니다.")
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    def _sync_tts_button_state(self) -> None:
+        configured = tts_configured(self._settings, self._entry.language)
+        self.tts_button.setEnabled(configured)
+        self.tts_button.setToolTip(
+            "단어 음성 재생" if configured else "설정에서 TTS를 켜고 음성을 선택하세요."
+        )
+
+    def _play_tts(self) -> None:
+        if self._settings is None or self._tts_thread is not None:
+            return
+        if not tts_configured(self._settings, self._entry.language):
+            self._sync_tts_button_state()
+            return
+        self.tts_button.setEnabled(False)
+        self.tts_button.setText("...")
+        self._tts_thread = QtCore.QThread(self)
+        self._tts_worker = _DetailTtsWorker(self._entry, self._settings)
+        self._tts_worker.moveToThread(self._tts_thread)
+        self._tts_thread.started.connect(self._tts_worker.run)
+        self._tts_worker.finished.connect(self._on_tts_finished)
+        self._tts_worker.finished.connect(self._tts_thread.quit)
+        self._tts_thread.finished.connect(self._tts_worker.deleteLater)
+        self._tts_thread.finished.connect(self._clear_tts_worker)
+        self._tts_thread.start()
+
+    @QtCore.Slot(bool, str, object)
+    def _on_tts_finished(self, ok: bool, message: str, path_obj: object) -> None:
+        self.tts_button.setText("TTS")
+        self._sync_tts_button_state()
+        if ok and isinstance(path_obj, Path):
+            self._play_audio_file(path_obj)
+            return
+        if message:
+            self.tts_button.setToolTip(message)
+
+    @QtCore.Slot()
+    def _clear_tts_worker(self) -> None:
+        self._tts_thread = None
+        self._tts_worker = None
+
+    def _play_audio_file(self, path: Path) -> None:
+        try:
+            from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+        except ImportError:
+            self.tts_button.setToolTip("QtMultimedia를 사용할 수 없습니다.")
+            return
+        player = QMediaPlayer(self)
+        audio_out = QAudioOutput(self)
+        player.setAudioOutput(audio_out)
+        player.setSource(QtCore.QUrl.fromLocalFile(str(path)))
+        player.play()
+        self._tts_player = (player, audio_out)
 
     def _add_meanings(self, layout: QtWidgets.QVBoxLayout) -> None:
         if self._entry.meaning_groups:
@@ -278,3 +364,37 @@ def _first_gloss(entry: VocabularyEntry) -> str:
         # entries so the user can scan them line-by-line.
         return senses[0]
     return summary
+
+
+def _dot_icon(*, enabled: bool) -> QtGui.QIcon:
+    size = 12
+    pixmap = QtGui.QPixmap(size, size)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+    painter.setBrush(QtGui.QColor("#e8744f" if enabled else "#6a6963"))
+    painter.setPen(QtCore.Qt.NoPen)
+    painter.drawEllipse(QtCore.QRectF(2, 2, 8, 8))
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+class _DetailTtsWorker(QtCore.QObject):
+    finished = QtCore.Signal(bool, str, object)
+
+    def __init__(self, entry: VocabularyEntry, settings: Settings) -> None:
+        super().__init__()
+        self._entry = entry
+        self._settings = settings
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            path = synthesize_word_audio(self._entry, self._settings)
+        except Exception as exc:
+            self.finished.emit(False, f"TTS 생성 실패: {exc}", None)
+            return
+        if path is None:
+            self.finished.emit(False, "TTS 음성을 생성할 수 없습니다.", None)
+            return
+        self.finished.emit(True, "", path)

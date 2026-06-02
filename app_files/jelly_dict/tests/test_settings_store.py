@@ -14,6 +14,7 @@ def test_creates_default_settings_on_first_load(isolated_runtime):
     assert settings.default_excel_dir.endswith("jelly-dict")
     assert settings.anki_export_confirm_mode == "smart"
     assert settings.last_apkg_export_tts_enabled is None
+    assert settings.tts_pre_generate_on_save is False
 
 
 def test_persists_changes(isolated_runtime):

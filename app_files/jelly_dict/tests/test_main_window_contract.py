@@ -5,7 +5,12 @@ from pathlib import Path
 from PySide6 import QtWidgets
 
 from app.storage.settings_store import Settings
-from app.ui.main_window import TransientStatusBar, runtime_status_summary
+from app.core.models import VocabularyEntry
+from app.ui.main_window import (
+    TransientStatusBar,
+    _append_tts_pre_generation_job,
+    runtime_status_summary,
+)
 
 
 MAIN_WINDOW = Path(__file__).resolve().parents[1] / "app" / "ui" / "main_window.py"
@@ -117,3 +122,26 @@ def test_transient_status_bar_is_overlay_and_does_not_resize_parent(qtbot):
     assert parent.size() == before
     assert status.parentWidget() is parent
     assert status.y() >= parent.height() - status.height() - 12
+
+
+def test_tts_pre_generation_queue_keeps_latest_and_stays_bounded():
+    settings = Settings()
+    queue: list[tuple[Settings, VocabularyEntry]] = []
+
+    for idx in range(5):
+        _append_tts_pre_generation_job(
+            queue,
+            settings,
+            VocabularyEntry(language="en", word=f"word-{idx}"),
+            limit=3,
+        )
+    _append_tts_pre_generation_job(
+        queue,
+        settings,
+        VocabularyEntry(language="en", word="word-3", meanings_summary="latest"),
+        limit=3,
+    )
+
+    assert len(queue) == 3
+    assert [entry.word for _, entry in queue] == ["word-2", "word-4", "word-3"]
+    assert queue[-1][1].meanings_summary == "latest"

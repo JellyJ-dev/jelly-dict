@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.core.models import Example, MeaningGroup, Sense, VocabularyEntry
+from app.storage.settings_store import Settings
 from app.ui.entry_detail_dialog import EntryDetailDialog
 
 
@@ -133,3 +134,21 @@ def test_entry_detail_supports_standard_close_shortcut(qtbot):
     assert dialog.close_shortcut.context() == QtCore.Qt.ShortcutContext.WindowShortcut
 
     assert dialog.close_shortcut.parent() is dialog
+
+
+def test_entry_detail_tts_button_tracks_settings(qtbot):
+    entry = VocabularyEntry(language="en", word="distribution", meanings_summary="1.유통")
+    disabled = EntryDetailDialog(entry, settings=Settings(tts_enabled=False))
+    enabled = EntryDetailDialog(
+        entry,
+        settings=Settings(
+            tts_enabled=True,
+            tts_engine_en="kokoro",
+            tts_voice_en="af_heart",
+        ),
+    )
+    qtbot.addWidget(disabled)
+    qtbot.addWidget(enabled)
+
+    assert not disabled.tts_button.isEnabled()
+    assert enabled.tts_button.isEnabled()

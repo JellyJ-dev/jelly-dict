@@ -185,6 +185,36 @@ class KokoroInstallWorker(_BaseInstallWorker):
             self.finished.emit(False, msg)
             return
 
+        from app.anki.tts.kokoro_provider import KOKORO_REPO_ID, KOKORO_REQUIRED_FILES
+
+        snapshot_code = (
+            "from huggingface_hub import snapshot_download; "
+            f"snapshot_download({KOKORO_REPO_ID!r}, "
+            f"allow_patterns={list(KOKORO_REQUIRED_FILES)!r})"
+        )
+        model_ok, model_msg = self._run(
+            [sys.executable, "-c", snapshot_code],
+            "Kokoro 로컬 모델 캐시 설치",
+            timeout=1200,
+        )
+        if not model_ok:
+            self.finished.emit(False, model_msg)
+            return
+
+        en_ok, en_msg = self._run(
+            [sys.executable, "-m", "spacy", "download", "en_core_web_sm"],
+            "영어 G2P 모델 설치",
+            timeout=900,
+        )
+        if not en_ok:
+            self.finished.emit(
+                False,
+                "Kokoro 영어 TTS용 spaCy 모델 설치 실패:\n"
+                f"{en_msg}\n"
+                "설치가 끝나기 전에는 영어 TTS가 실행 중 자동 다운로드를 시도하지 않습니다.",
+            )
+            return
+
         # Japanese deps — best effort. pyopenjtalk needs a C build on
         # some platforms; if it fails we still report success for English.
         ja_cmd = [

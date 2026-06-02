@@ -24,6 +24,7 @@ def cache_path(
     *,
     bitrate: str = "",
     sample_rate: int | str | None = None,
+    cache_dir: Path | None = None,
 ) -> Path:
     """Return the deterministic cache path for the given input."""
     safe_voice = _VOICE_SAFE.sub("-", voice or "default")
@@ -32,7 +33,9 @@ def cache_path(
     )
     digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:12]
     name = f"{language}_{engine}_{safe_voice}_{digest}.mp3"
-    return config.tts_cache_dir() / name
+    base = cache_dir or config.tts_cache_dir()
+    base.mkdir(parents=True, exist_ok=True)
+    return base / name
 
 
 def has_cached(
@@ -43,10 +46,32 @@ def has_cached(
     *,
     bitrate: str = "",
     sample_rate: int | str | None = None,
+    cache_dir: Path | None = None,
 ) -> bool:
     return cache_path(
-        language, engine, voice, text, bitrate=bitrate, sample_rate=sample_rate
+        language,
+        engine,
+        voice,
+        text,
+        bitrate=bitrate,
+        sample_rate=sample_rate,
+        cache_dir=cache_dir,
     ).exists()
+
+
+def wordbook_audio_dir(settings, language: str) -> Path:
+    """Return the per-wordbook mp3 folder for generated TTS audio."""
+    try:
+        raw_path = settings.excel_path_for(language)
+    except Exception:
+        return config.tts_cache_dir()
+    if not str(raw_path or "").strip():
+        return config.tts_cache_dir()
+    excel_path = Path(raw_path).expanduser()
+    base = excel_path.parent if excel_path.name else excel_path
+    path = base / "mp3"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def is_valid_audio_file(path: Path) -> bool:
@@ -90,14 +115,23 @@ def _looks_like_wav(header: bytes) -> bool:
     return b"fmt " in header[12:] and b"data" in header[12:]
 
 
-def clear_cache() -> int:
+def clear_cache(cache_dirs: list[Path] | tuple[Path, ...] | set[Path] | None = None) -> int:
     """Remove all cached mp3 files. Returns count removed."""
-    base = config.tts_cache_dir()
     count = 0
-    for f in base.glob("*.mp3"):
+    bases = list(cache_dirs) if cache_dirs is not None else [config.tts_cache_dir()]
+    seen: set[Path] = set()
+    for base in bases:
         try:
-            f.unlink()
-            count += 1
-        except OSError:
-            pass
+            base = Path(base).expanduser()
+        except TypeError:
+            continue
+        if base in seen:
+            continue
+        seen.add(base)
+        for f in base.glob("*.mp3"):
+            try:
+                f.unlink()
+                count += 1
+            except OSError:
+                pass
     return count

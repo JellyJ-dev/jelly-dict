@@ -15,7 +15,7 @@ from typing import Optional
 
 from app.anki.tts import build_provider, get_provider_info
 from app.anki.tts.base import TTSResult
-from app.anki.tts.cache import cache_path, is_valid_audio_file
+from app.anki.tts.cache import cache_path, is_valid_audio_file, wordbook_audio_dir
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,7 @@ class TTSPipeline:
             text,
             bitrate=getattr(self._settings, "tts_bitrate", ""),
             sample_rate=getattr(self._settings, "tts_sample_rate", None),
+            cache_dir=wordbook_audio_dir(self._settings, language),
         )
 
         if not is_valid_audio_file(out_path):

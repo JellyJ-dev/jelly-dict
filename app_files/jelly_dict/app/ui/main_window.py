@@ -49,6 +49,7 @@ LAST_VIEW_STATE_KEY = "ui.last_view_mode"
 WORDBOOK_SORT_STATE_KEY = "ui.wordbook_sort_option"
 WORDBOOK_SORT_OPTIONS = {"최신순", "오래된순", "가나다순"}
 MACOS_TITLEBAR_DOUBLE_CLICK_HEIGHT = 52
+TTS_PREGEN_QUEUE_LIMIT = 64
 
 
 def runtime_status_summary(settings: Settings) -> str:
@@ -57,6 +58,43 @@ def runtime_status_summary(settings: Settings) -> str:
     provider = "Naver" if settings.provider == "naver_crawler" else "Manual"
     cache = "cache on" if settings.cache_enabled else "cache off"
     return f"EN: {excel_en} · JA: {excel_ja} · {provider} · {cache}"
+
+
+def _tts_pre_generation_pipeline_key(settings: Settings) -> tuple[object, ...]:
+    return (
+        settings.tts_engine_en,
+        settings.tts_engine_ja,
+        settings.tts_voice_en,
+        settings.tts_voice_ja,
+        settings.tts_bitrate,
+        settings.tts_sample_rate,
+        settings.excel_path_for("en"),
+        settings.excel_path_for("ja"),
+        settings.voicevox_url,
+    )
+
+
+def _tts_pre_generation_entry_key(entry: VocabularyEntry) -> tuple[str, str]:
+    return (entry.language, normalize_word_key(entry.word, entry.language))
+
+
+def _append_tts_pre_generation_job(
+    queue: list[tuple[Settings, VocabularyEntry]],
+    settings: Settings,
+    entry: VocabularyEntry,
+    *,
+    limit: int = TTS_PREGEN_QUEUE_LIMIT,
+) -> None:
+    entry_key = _tts_pre_generation_entry_key(entry)
+    queue[:] = [
+        (queued_settings, queued_entry)
+        for queued_settings, queued_entry in queue
+        if _tts_pre_generation_entry_key(queued_entry) != entry_key
+    ]
+    queue.append((settings, entry))
+    overflow = len(queue) - max(1, limit)
+    if overflow > 0:
+        del queue[:overflow]
 
 
 class LookupJob:
@@ -253,6 +291,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._saved_words_thread: QtCore.QThread | None = None
         self._saved_words_worker: SavedWordsCacheWorker | None = None
         self._saved_words_started: float | None = None
+        self._tts_pregen_lock = threading.Lock()
+        self._tts_pregen_queue: list[tuple[Settings, VocabularyEntry]] = []
+        self._tts_pregen_active = False
         self._ocr_temp_path: Path | None = None
         self._browser_prewarm_started = False
         self._browser_prewarm_timer = QtCore.QTimer(self)
@@ -1182,6 +1223,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         self._start_saved_words_cache_load()
+        self._queue_tts_pre_generation(outcome.entry)
 
         message = f"저장됨 ({outcome.status}) → {outcome.path}"
         if outcome.backup_path is not None:
@@ -1417,6 +1459,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._cache.upsert(entry)
         except Exception as exc:
             log.warning("cache upsert after wordbook edit failed: %s", exc)
+        self._queue_tts_pre_generation(entry)
 
         self._refresh_wordbook_after_mutation(language)
         message = f"{entry.word} 수정됨"
@@ -1519,6 +1562,57 @@ class MainWindow(QtWidgets.QMainWindow):
         self._wordbook_ctrl.update_saved_words_cache()
         self._wordbook_ctrl.show_inline(language, self._wordbook_sort_option)
         self._remember_last_view_mode(language)
+
+    def _queue_tts_pre_generation(self, entry: VocabularyEntry) -> None:
+        if not (
+            getattr(self._settings, "tts_enabled", False)
+            and getattr(self._settings, "tts_pre_generate_on_save", False)
+        ):
+            return
+        settings_snapshot = Settings(**self._settings.to_dict())
+        entry_snapshot = VocabularyEntry.from_dict(entry.to_dict())
+        should_start = False
+        with self._tts_pregen_lock:
+            _append_tts_pre_generation_job(
+                self._tts_pregen_queue,
+                settings_snapshot,
+                entry_snapshot,
+            )
+            if not self._tts_pregen_active:
+                self._tts_pregen_active = True
+                should_start = True
+        if should_start:
+            threading.Thread(
+                target=self._run_tts_pre_generation_loop,
+                name="jelly-dict-tts-pregen",
+                daemon=True,
+            ).start()
+
+    def _run_tts_pre_generation_loop(self) -> None:
+        from app.anki.tts.pipeline import TTSPipeline
+        from app.services.tts_audio_service import pre_generate_entry_audio_with_pipeline
+
+        pipelines: dict[tuple[object, ...], TTSPipeline] = {}
+
+        while True:
+            with self._tts_pregen_lock:
+                if not self._tts_pregen_queue:
+                    self._tts_pregen_active = False
+                    return
+                settings, entry = self._tts_pregen_queue.pop(0)
+            try:
+                key = _tts_pre_generation_pipeline_key(settings)
+                pipeline = pipelines.get(key)
+                if pipeline is None:
+                    pipeline = TTSPipeline(settings)
+                    pipelines[key] = pipeline
+                generated = pre_generate_entry_audio_with_pipeline(
+                    entry, settings, pipeline,
+                )
+                if generated:
+                    log.info("TTS pre-generated %s file(s) for %s", generated, entry.word)
+            except Exception as exc:
+                log.warning("TTS pre-generation failed for %s: %s", entry.word, exc)
 
     def _open_word_list_dialog(self, language: str = "en") -> None:
         from app.ui.word_list_view import WordListDialog

@@ -1,3 +1,5 @@
 -r requirements.txt
 kokoro>=0.3
 soundfile>=0.12
+spacy>=3.8,<3.9
+misaki[ja]>=0.6.7

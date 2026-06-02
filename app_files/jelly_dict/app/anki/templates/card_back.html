@@ -1,10 +1,13 @@
-{{#WordAudio}}{{#ShowBackAudio}}
+{{#WordAudio}}
 <script>
-// Same trick as the front: temporarily neuter HTMLAudioElement.play so
-// Anki's [sound:] autoplay is silenced when the user toggled TTS off.
+// Block native [sound:] autoplay when back autoplay is disabled or the
+// user toggled TTS off. Manual text replay is installed below after Anki
+// turns [sound:] into its replay button.
 (function(){
   try {
-    if (localStorage.getItem('jellydict.tts') === '0') {
+    var autoTts = false;
+    {{#ShowBackAudio}}autoTts = true;{{/ShowBackAudio}}
+    if (!autoTts || localStorage.getItem('jellydict.tts') === '0') {
       var origPlay = HTMLAudioElement.prototype.play;
       HTMLAudioElement.prototype.play = function(){ return Promise.resolve(); };
       setTimeout(function(){ HTMLAudioElement.prototype.play = origPlay; }, 1000);
@@ -12,16 +15,29 @@
   } catch(e) {}
 })();
 </script>
-{{/ShowBackAudio}}{{/WordAudio}}
+{{/WordAudio}}
 
 <div class="headword-block">
   {{#ShowRubyToggle}}{{#Reading}}
+  {{#WordAudio}}
+  <div class="headword-ruby playable-audio" id="headword-ruby" data-audio-bank="word-audio" role="button" tabindex="0">
+    <span class="headword-source">{{Word}}</span>
+    <span class="reading-source">{{Reading}}</span>
+  </div>
+  {{/WordAudio}}
+  {{^WordAudio}}
   <div class="headword-ruby" id="headword-ruby">
     <span class="headword-source">{{Word}}</span>
     <span class="reading-source">{{Reading}}</span>
   </div>
+  {{/WordAudio}}
   {{/Reading}}{{/ShowRubyToggle}}
+  {{#WordAudio}}
+  <div class="headword playable-audio" data-audio-bank="word-audio" role="button" tabindex="0">{{Word}}</div>
+  {{/WordAudio}}
+  {{^WordAudio}}
   <div class="headword">{{Word}}</div>
+  {{/WordAudio}}
 </div>
 
 {{#ShowRubyToggle}}{{#Reading}}
@@ -91,9 +107,9 @@
 </script>
 {{/Reading}}{{/ShowRubyToggle}}
 
-{{#WordAudio}}{{#ShowBackAudio}}
-{{WordAudio}}
-{{/ShowBackAudio}}{{/WordAudio}}
+{{#WordAudio}}
+<span id="word-audio" class="audio-bank">{{WordAudio}}</span>
+{{/WordAudio}}
 
 <hr class="divider" />
 
@@ -140,3 +156,32 @@
   });
 })();
 </script>
+
+{{#WordAudio}}
+<script>
+(function(){
+  function ttsAllowed(){
+    try { return localStorage.getItem('jellydict.tts') !== '0'; }
+    catch(e) { return true; }
+  }
+  function playBank(id){
+    if (!ttsAllowed()) return;
+    var bank = document.getElementById(id);
+    if (!bank) return;
+    var replay = bank.querySelector('.replay-button, button, a');
+    if (replay) { replay.click(); return; }
+    var audio = bank.querySelector('audio');
+    if (audio) { try { audio.currentTime = 0; audio.play(); } catch(e) {} }
+  }
+  document.querySelectorAll('[data-audio-bank]').forEach(function(el){
+    el.addEventListener('click', function(){ playBank(el.getAttribute('data-audio-bank')); });
+    el.addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        playBank(el.getAttribute('data-audio-bank'));
+      }
+    });
+  });
+})();
+</script>
+{{/WordAudio}}

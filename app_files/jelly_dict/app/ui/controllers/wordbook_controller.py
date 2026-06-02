@@ -270,4 +270,4 @@ class WordbookController:
         if entry is None:
             self._status.showMessage("최근 단어 상세를 찾을 수 없습니다.")
             return
-        EntryDetailDialog(entry, self._parent).exec()
+        EntryDetailDialog(entry, self._parent, settings=self._settings).exec()

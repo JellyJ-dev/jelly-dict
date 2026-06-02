@@ -29,6 +29,11 @@ class _Settings:
     tts_bitrate: str = "96k"
     tts_sample_rate: int = 44100
     voicevox_url: str = "http://127.0.0.1:50021"
+    excel_path_en: str = ""
+    excel_path_ja: str = ""
+
+    def excel_path_for(self, language: str) -> str:
+        return self.excel_path_ja if language == "ja" else self.excel_path_en
 
 
 class _FakeProvider:
@@ -137,6 +142,65 @@ def test_pipeline_writes_audio_and_caches(isolated_runtime, monkeypatch):
     assert fake.calls == 1
     assert p1 in batch.media_paths
     assert batch.media_paths.count(p1) == 1
+
+
+def test_pipeline_uses_wordbook_mp3_folder(isolated_runtime, monkeypatch):
+    _patch_registry(monkeypatch)
+    from app.anki.tts.pipeline import TTSPipeline
+
+    excel_path = isolated_runtime / "books" / "vocab_en.xlsx"
+    s = _Settings(excel_path_en=str(excel_path))
+    path = TTSPipeline(s).synthesize("hello", "en")
+
+    assert path is not None
+    assert path.parent == excel_path.parent / "mp3"
+    assert path.exists()
+
+
+def test_pre_generate_entry_audio_includes_examples(isolated_runtime, monkeypatch):
+    _patch_registry(monkeypatch)
+    from app.core.models import Example, VocabularyEntry
+    from app.services.tts_audio_service import pre_generate_entry_audio
+
+    excel_path = isolated_runtime / "books" / "vocab_en.xlsx"
+    settings = _Settings(excel_path_en=str(excel_path), tts_play_examples=True)
+    entry = VocabularyEntry(
+        language="en",
+        word="distribution",
+        examples_flat=[
+            Example(source_text_plain="The map shows distribution."),
+            Example(source_text_plain="Drug distribution charges."),
+        ],
+    )
+
+    assert pre_generate_entry_audio(entry, settings) == 3
+    assert len(list((excel_path.parent / "mp3").glob("*.mp3"))) == 3
+
+
+def test_pre_generate_entry_audio_reuses_supplied_pipeline(isolated_runtime):
+    from app.core.models import Example, VocabularyEntry
+    from app.services.tts_audio_service import pre_generate_entry_audio_with_pipeline
+
+    class _Pipeline:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def synthesize(self, text, language):
+            self.calls.append(text)
+            path = isolated_runtime / f"{len(self.calls)}.mp3"
+            path.write_bytes(FAKE_MP3)
+            return path
+
+    settings = _Settings(tts_play_examples=True)
+    entry = VocabularyEntry(
+        language="en",
+        word="distribution",
+        examples_flat=[Example(source_text_plain="The map shows distribution.")],
+    )
+    pipeline = _Pipeline()
+
+    assert pre_generate_entry_audio_with_pipeline(entry, settings, pipeline) == 2
+    assert pipeline.calls == ["distribution", "The map shows distribution."]
 
 
 def test_pipeline_regenerates_empty_cached_audio(isolated_runtime, monkeypatch):
@@ -301,3 +365,38 @@ def test_voicevox_rejects_remote_url():
     assert VoicevoxProvider.is_running("https://example.com:50021") is False
     with pytest.raises(ValueError, match="localhost"):
         VoicevoxProvider(type("S", (), {"voicevox_url": "https://example.com:50021"})())
+
+
+def test_kokoro_availability_requires_local_g2p_and_voice_cache(monkeypatch):
+    import importlib.util
+    from app.anki.tts import kokoro_provider
+
+    required = {
+        "kokoro",
+        "soundfile",
+        "spacy",
+        "en_core_web_sm",
+        "pyopenjtalk",
+    }
+
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: object() if name in required else None,
+    )
+    monkeypatch.setattr(
+        kokoro_provider,
+        "_local_model_files",
+        lambda: (Path("/cache/config.json"), Path("/cache/kokoro.pth")),
+    )
+    monkeypatch.setattr(
+        kokoro_provider,
+        "_local_voice_path",
+        lambda voice: Path(f"/cache/{voice}.pt"),
+    )
+
+    assert kokoro_provider.KokoroProvider.is_available()
+
+    required.remove("en_core_web_sm")
+
+    assert not kokoro_provider.KokoroProvider.is_available()

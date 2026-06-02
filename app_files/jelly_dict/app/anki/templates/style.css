@@ -20,6 +20,27 @@
   line-height: 1.12;
 }
 
+.playable-audio {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(232, 116, 79, 0.45);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+.playable-audio:active {
+  color: #ffd7c8;
+}
+
+.audio-bank {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
 .headword-block--ruby > .headword {
   display: none;
 }

@@ -230,8 +230,25 @@ def test_fields_for_entry_renders_example_audio_in_detail():
             "play_back": True,
         },
     )
-    assert '<span class="example-audio">[sound:ja_voicevox_example.mp3]</span>' in fields["MeaningDetail"]
+    assert 'data-audio-bank="example-audio-0"' in fields["MeaningDetail"]
+    assert (
+        '<span id="example-audio-0" class="example-audio audio-bank">'
+        "[sound:ja_voicevox_example.mp3]</span>"
+    ) in fields["MeaningDetail"]
     assert "[sound:ja_voicevox_example.mp3]" in fields["Examples"]
+
+
+def test_card_templates_support_click_to_play_audio():
+    front = render.load_template("card_front.html")
+    back = render.load_template("card_back.html")
+    css = render.load_template("style.css")
+
+    assert 'data-audio-bank="word-audio"' in front
+    assert 'data-audio-bank="word-audio"' in back
+    assert "document.querySelectorAll('[data-audio-bank]')" in front
+    assert "document.querySelectorAll('[data-audio-bank]')" in back
+    assert ".playable-audio" in css
+    assert ".audio-bank" in css
 
 
 def test_fields_for_entry_no_word_audio_disables_gates():

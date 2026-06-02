@@ -1,12 +1,13 @@
-{{#WordAudio}}{{#ShowFrontAudio}}
+{{#WordAudio}}
 <script>
-// Block autoplay if the user turned TTS off on the back side.
-// Runs BEFORE Anki processes [sound:] below, so the audio element's
-// auto-play call becomes a no-op for ~1s. Manual replay (▶) after the
-// blocking window works normally.
+// Block native [sound:] autoplay when front autoplay is disabled or the
+// user toggled TTS off. Manual text replay is installed below after Anki
+// turns [sound:] into its replay button.
 (function(){
   try {
-    if (localStorage.getItem('jellydict.tts') === '0') {
+    var autoTts = false;
+    {{#ShowFrontAudio}}autoTts = true;{{/ShowFrontAudio}}
+    if (!autoTts || localStorage.getItem('jellydict.tts') === '0') {
       var origPlay = HTMLAudioElement.prototype.play;
       HTMLAudioElement.prototype.play = function(){ return Promise.resolve(); };
       setTimeout(function(){ HTMLAudioElement.prototype.play = origPlay; }, 1000);
@@ -14,15 +15,46 @@
   } catch(e) {}
 })();
 </script>
-{{/ShowFrontAudio}}{{/WordAudio}}
+{{/WordAudio}}
 
 <div class="headword-block">
   {{#Reading}}
   <div class="reading-line reading-line--hidden">{{Reading}}</div>
   {{/Reading}}
+  {{#WordAudio}}
+  <div class="headword playable-audio" data-audio-bank="word-audio" role="button" tabindex="0">{{Word}}</div>
+  {{/WordAudio}}
+  {{^WordAudio}}
   <div class="headword">{{Word}}</div>
+  {{/WordAudio}}
 </div>
 
-{{#WordAudio}}{{#ShowFrontAudio}}
-{{WordAudio}}
-{{/ShowFrontAudio}}{{/WordAudio}}
+{{#WordAudio}}
+<span id="word-audio" class="audio-bank">{{WordAudio}}</span>
+<script>
+(function(){
+  function ttsAllowed(){
+    try { return localStorage.getItem('jellydict.tts') !== '0'; }
+    catch(e) { return true; }
+  }
+  function playBank(id){
+    if (!ttsAllowed()) return;
+    var bank = document.getElementById(id);
+    if (!bank) return;
+    var replay = bank.querySelector('.replay-button, button, a');
+    if (replay) { replay.click(); return; }
+    var audio = bank.querySelector('audio');
+    if (audio) { try { audio.currentTime = 0; audio.play(); } catch(e) {} }
+  }
+  document.querySelectorAll('[data-audio-bank]').forEach(function(el){
+    el.addEventListener('click', function(){ playBank(el.getAttribute('data-audio-bank')); });
+    el.addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        playBank(el.getAttribute('data-audio-bank'));
+      }
+    });
+  });
+})();
+</script>
+{{/WordAudio}}

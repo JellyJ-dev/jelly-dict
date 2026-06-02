@@ -1320,6 +1320,24 @@ QPushButton#entryDetailClose:hover {
     border-color: #4b4b48;
     color: #f1ece2;
 }
+QPushButton#entryDetailTtsButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    color: #e2ded5;
+    min-height: 28px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 700;
+}
+QPushButton#entryDetailTtsButton:hover {
+    background: #333331;
+    border-color: #4b4b48;
+    color: #f1ece2;
+}
+QPushButton#entryDetailTtsButton:disabled {
+    color: #77736d;
+}
 QScrollArea#entryDetailScroll,
 QScrollArea#entryDetailScroll > QWidget > QWidget {
     background: transparent;

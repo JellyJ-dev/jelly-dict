@@ -77,7 +77,8 @@ def _render_sub_sense(
                 if idx < len(example_audios):
                     audio = example_audios[idx]
                 audio_index[0] = idx + 1
-            out.append(_render_example(ex, audio))
+            audio_id = f"example-audio-{idx}" if audio else None
+            out.append(_render_example(ex, audio, audio_id))
         out.append("</div>")
     if sub.synonyms:
         out.append('<div class="synonyms">')
@@ -95,18 +96,31 @@ def _render_sub_sense(
     return "".join(out)
 
 
-def _render_example(ex: Example, audio_filename: str | None = None) -> str:
+def _render_example(
+    ex: Example,
+    audio_filename: str | None = None,
+    audio_id: str | None = None,
+) -> str:
     source = _sanitize_example_source(ex.source_text, ex.source_text_plain)
+    source_attrs = 'class="example-source"'
+    if audio_filename and audio_id:
+        source_attrs = (
+            'class="example-source playable-audio" '
+            f'data-audio-bank="{escape(audio_id)}" role="button" tabindex="0"'
+        )
     parts = [
         '<div class="example">',
         '<div class="example-head">',
-        f'<span class="example-source">{source}</span>',
+        f"<span {source_attrs}>{source}</span>",
     ]
-    if audio_filename:
+    if audio_filename and audio_id:
         # Anki's [sound:...] tag becomes a native replay button + autoplay
         # marker. We rely on it instead of HTML5 <audio> because the new
         # Audio() URL resolution is unreliable inside Anki's webview.
-        parts.append(f'<span class="example-audio">[sound:{audio_filename}]</span>')
+        parts.append(
+            f'<span id="{escape(audio_id)}" class="example-audio audio-bank">'
+            f"[sound:{audio_filename}]</span>"
+        )
     parts.append("</div>")
     if ex.translation_ko:
         parts.append(
@@ -176,7 +190,8 @@ def render_examples_html(
             if example_audios is not None and idx < len(example_audios)
             else None
         )
-        parts.append(_render_example(ex, audio))
+        audio_id = f"example-audio-flat-{idx}" if audio else None
+        parts.append(_render_example(ex, audio, audio_id))
     return "".join(parts)
 
 

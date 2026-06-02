@@ -64,6 +64,7 @@ class Settings:
     tts_play_front: bool = True
     tts_play_back: bool = True
     tts_play_examples: bool = False
+    tts_pre_generate_on_save: bool = False
     tts_engine_en: str = "kokoro"          # kokoro | edge | none
     tts_engine_ja: str = "kokoro"          # kokoro | voicevox | edge | none
     tts_voice_en: str = "af_heart"
