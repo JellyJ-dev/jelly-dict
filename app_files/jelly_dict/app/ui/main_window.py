@@ -216,6 +216,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._app_state_signal_connected = False
         self._titlebar_drag_origin: QtCore.QPoint | None = None
         self._titlebar_drag_window_origin: QtCore.QPoint | None = None
+        self._titlebar_zoom_restore_geometry: QtCore.QRect | None = None
         self.setWindowTitle("")
         self.setWindowFlag(QtCore.Qt.WindowType.ExpandedClientAreaHint, True)
         self.setWindowFlag(QtCore.Qt.WindowType.NoTitleBarBackgroundHint, True)
@@ -445,6 +446,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _perform_titlebar_zoom(self) -> None:
         app = QtWidgets.QApplication.instance()
+        if self._restore_titlebar_zoom_geometry():
+            return
         if (
             sys.platform == "darwin"
             and app is not None
@@ -457,11 +460,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 ns_view = objc.objc_object(c_void_p=ctypes.c_void_p(int(self.winId())))
                 ns_window = ns_view.window()
                 if ns_window is not None:
+                    if ns_window.isZoomed():
+                        ns_window.performZoom_(None)
+                        return
+                    self._titlebar_zoom_restore_geometry = QtCore.QRect(self.geometry())
                     ns_window.performZoom_(None)
                     return
             except Exception as exc:  # pragma: no cover - depends on macOS window server
                 log.info("macOS titlebar zoom fallback used: %s", exc)
-        self.showNormal() if self.isMaximized() else self.showMaximized()
+        if self.isMaximized():
+            self.showNormal()
+            return
+        self._titlebar_zoom_restore_geometry = QtCore.QRect(self.geometry())
+        self.showMaximized()
+
+    def _restore_titlebar_zoom_geometry(self) -> bool:
+        restore_geometry = self._titlebar_zoom_restore_geometry
+        if restore_geometry is None or restore_geometry.isNull():
+            self._titlebar_zoom_restore_geometry = None
+            return False
+        self._titlebar_zoom_restore_geometry = None
+        self.showNormal()
+        self.setGeometry(restore_geometry)
+        return True
 
     def _apply_macos_titlebar_chrome(self) -> None:
         if self._macos_titlebar_chrome_applied or sys.platform != "darwin":
