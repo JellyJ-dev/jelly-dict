@@ -160,6 +160,7 @@ jelly dict 앱 파일 구조가 원래 배포본과 다릅니다.
 정상적인 최상위 구조:
   jelly-dict/
   ├── Install jelly dict.command
+  ├── Update jelly dict.command
   ├── Run jelly dict.command
   ├── README.md
   └── app_files/
@@ -237,6 +238,7 @@ verify_public_layout() {
 
   for path in \
     "${PUBLIC_ROOT}/Install jelly dict.command" \
+    "${PUBLIC_ROOT}/Update jelly dict.command" \
     "${PUBLIC_ROOT}/Run jelly dict.command" \
     "${PUBLIC_ROOT}/README.md" \
     "${PUBLIC_ROOT}/app_files" \
@@ -252,6 +254,7 @@ verify_public_layout() {
 
   for path in \
     "${PUBLIC_ROOT}/Install jelly dict.command" \
+    "${PUBLIC_ROOT}/Update jelly dict.command" \
     "${PUBLIC_ROOT}/Run jelly dict.command" \
     "${REPO_ROOT}/scripts/quickstart.sh" \
     "${REPO_ROOT}/scripts/run.sh"; do

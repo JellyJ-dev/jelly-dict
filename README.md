@@ -8,7 +8,7 @@
 
 조회한 단어는 Excel 파일에 저장되며, Anki 내보내기도 이 Excel 단어장을 기준으로 생성됩니다.
 
-GitHub 저장소를 다운로드하거나 clone한 뒤, 포함된 installer를 더블클릭하면 개인용 macOS 앱 번들이 생성됩니다.
+GitHub 저장소를 다운로드하거나 clone한 뒤, 포함된 installer를 더블클릭하면 개인용 macOS 앱 번들이 생성됩니다. 이후 갱신은 같은 UI의 updater로 처리할 수 있습니다.
 
 ---
 
@@ -78,6 +78,14 @@ macOS가 처음 실행 때 보안 경고를 띄우면 파일 또는 앱을 **우
 
 repo 폴더 위치를 옮기면 `Jelly Dict.app` 안에 저장된 원본 경로가 맞지 않게 됩니다. 이 경우 `Install jelly dict.command`를 다시 실행해 앱을 새로 만들면 됩니다.
 
+이미 설치한 뒤 최신 코드로 갱신하려면 Finder에서 아래 파일을 더블클릭하세요.
+
+```text
+Update jelly dict.command
+```
+
+git으로 받은 폴더에서는 fast-forward 업데이트만 진행하고, 로컬 변경이 있으면 자동으로 덮어쓰지 않습니다. git 폴더가 아닌 배포본에서는 현재 파일 기준으로 앱 번들을 다시 생성합니다.
+
 ---
 
 ## 설치 흐름
@@ -92,6 +100,14 @@ repo 폴더 위치를 옮기면 `Jelly Dict.app` 안에 저장된 원본 경로�
 
 생성된 `.app`은 내부에 앱 코드를 복사하지 않고, 원본 repo 경로를 저장한 뒤 내부 환경 점검 스크립트와 실행 스크립트를 감싸서 실행합니다.
 
+`Update jelly dict.command`는 동일한 터미널 UI를 사용해 다음 순서로 진행됩니다.
+
+1. git 배포본이면 `git pull --ff-only`로 최신 소스를 확인합니다.
+2. 기존 설치 방식을 유지해 Python 패키지와 Playwright WebKit을 갱신합니다.
+3. `app_files/dist/Jelly Dict.app`을 다시 생성합니다.
+4. 기존 `~/Applications/Jelly Dict.app`이 있으면 새 번들로 교체합니다.
+5. 완료 후 앱을 바로 실행할지 묻습니다.
+
 ---
 
 ## 개발자용 실행
@@ -103,6 +119,7 @@ jelly dict는 Python 패키지, Playwright WebKit, macOS 권한, 가상환경 �
 개발자는 필요하면 아래 파일을 직접 사용할 수 있습니다.
 
 ```text
+Update jelly dict.command
 Run jelly dict.command
 app_files/scripts/quickstart.sh
 ```

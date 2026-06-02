@@ -20,6 +20,20 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 JELLY_DICT_VERSION="2.0"
+COMMAND_ROLE="${JELLY_DICT_COMMAND_ROLE:-install}"
+case "${COMMAND_ROLE}" in
+  update)
+    COMMAND_LABEL="Updater"
+    COMMAND_NOUN="업데이트"
+    COMMAND_DONE_LABEL="업데이트 완료"
+    ;;
+  *)
+    COMMAND_ROLE="install"
+    COMMAND_LABEL="Installer"
+    COMMAND_NOUN="설치"
+    COMMAND_DONE_LABEL="설치 완료"
+    ;;
+esac
 
 APP_NAME="Jelly Dict.app"
 QUICKSTART_SCRIPT="${SCRIPT_DIR}/app_files/scripts/quickstart.sh"
@@ -29,6 +43,7 @@ USER_APPS_DIR="${HOME}/Applications"
 USER_APP="${USER_APPS_DIR}/${APP_NAME}"
 QUICKSTART_LOG="${SCRIPT_DIR}/app_files/jelly_dict/.jelly_dict/logs/quickstart.log"
 INSTALL_LOG="${SCRIPT_DIR}/app_files/jelly_dict/.jelly_dict/logs/install_app.log"
+UPDATE_LOG="${SCRIPT_DIR}/app_files/jelly_dict/.jelly_dict/logs/update_app.log"
 APP_DIR="${SCRIPT_DIR}/app_files/jelly_dict"
 VENV_DIR="${APP_DIR}/.venv"
 INSTALL_INCOMPLETE_FILE="${APP_DIR}/.install_incomplete"
@@ -173,14 +188,14 @@ print_header() {
   [[ -n "${force_mode}" ]] && mode="${force_mode}"
 
   if [[ "${mode}" == "tiny" ]]; then
-    printf '%s%s✦ jelly dict%s  %s· Installer · v%s%s\n\n' \
-      "${BOLD}" "${ACCENT}" "${RESET}" "${MUTED}" "${JELLY_DICT_VERSION}" "${RESET}"
+    printf '%s%s✦ jelly dict%s  %s· %s · v%s%s\n\n' \
+      "${BOLD}" "${ACCENT}" "${RESET}" "${MUTED}" "${COMMAND_LABEL}" "${JELLY_DICT_VERSION}" "${RESET}"
     [[ -n "${step_label}" ]] && printf '%s●%s %s%s%s   %s%s%s\n\n' \
       "${ACCENT}" "${RESET}" "${BOLD}${INK}" "${step_label}" "${RESET}" "${MUTED}" "${step_caption}" "${RESET}"
     return
   fi
 
-  draw_border top "jelly dict  ·  Installer  ·  v${JELLY_DICT_VERSION}"
+  draw_border top "jelly dict  ·  ${COMMAND_LABEL}  ·  v${JELLY_DICT_VERSION}"
   frame_blank
 
   if [[ "${mode}" == "normal" ]]; then
@@ -664,6 +679,20 @@ run_build_app_logged() {
   "${BUILD_APP_SCRIPT}" >> "${INSTALL_LOG}" 2>&1
 }
 
+run_build_app_update_logged() {
+  "${BUILD_APP_SCRIPT}" >> "${UPDATE_LOG}" 2>&1
+}
+
+run_git_pull_logged() {
+  {
+    echo
+    echo "## source update"
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+    printf '$ git -C %q pull --ff-only\n' "${SCRIPT_DIR}"
+    git -C "${SCRIPT_DIR}" pull --ff-only
+  } >> "${UPDATE_LOG}" 2>&1
+}
+
 cleanup_interrupted_install_logged() {
   rm -rf "${VENV_DIR}" \
     "${APP_DIR}/.install_mode" \
@@ -883,7 +912,7 @@ EOF
 copy_dist_app_to_user_apps() {
   print_header "Step 4 / 5" "Applications 복사"
   body "$(cat <<EOF
-${INK}생성된 앱을 개인 Applications 폴더에 설치합니다.${RESET}
+${INK}생성된 앱을 개인 Applications 폴더에 ${COMMAND_NOUN}합니다.${RESET}
 ${MUTED}${USER_APPS_DIR}${RESET}
 EOF
 )"
@@ -893,7 +922,7 @@ EOF
   rm -rf "${USER_APP}"
   if cp -R "${DIST_APP}" "${USER_APP}"; then
     APP_TO_OPEN="${USER_APP}"
-    success "설치 완료: ${USER_APP}"
+    success "${COMMAND_DONE_LABEL}: ${USER_APP}"
     return 0
   fi
 
@@ -906,14 +935,14 @@ EOF
 
 finish_with_app() {
   local app_path="$1"
-  print_header "Step 5 / 5" "설치 완료"
+  print_header "Step 5 / 5" "${COMMAND_DONE_LABEL}"
   body "$(cat <<EOF
 ${GREEN}Jelly Dict.app 준비가 끝났습니다.${RESET}
 
 ${INK}실행 앱:${RESET}
 ${MUTED}${app_path}${RESET}
 
-${FAINT}repo 위치를 옮기면 이 installer를 다시 실행해야 합니다.${RESET}
+${FAINT}repo 위치를 옮기면 이 ${COMMAND_LABEL}를 다시 실행해야 합니다.${RESET}
 EOF
 )"
   echo
@@ -983,6 +1012,178 @@ EOF
   press_any_key "닫으려면 아무 키나"
   exit 1
 }
+
+repo_is_git_worktree() {
+  command -v git >/dev/null 2>&1 || return 1
+  git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
+repo_has_local_changes() {
+  [[ -n "$(git -C "${SCRIPT_DIR}" status --porcelain 2>/dev/null)" ]]
+}
+
+repo_status_preview() {
+  git -C "${SCRIPT_DIR}" status --short 2>/dev/null | head -n 10
+}
+
+saved_update_install_mode() {
+  local mode=""
+  if [[ -f "${APP_DIR}/.install_mode" ]]; then
+    mode="$(tr -d '[:space:]' < "${APP_DIR}/.install_mode" 2>/dev/null || true)"
+  fi
+  if [[ "${mode}" != "venv" && "${mode}" != "local" ]]; then
+    mode="venv"
+  fi
+  printf '%s\n' "${mode}"
+}
+
+run_update_flow() {
+  require_file "${QUICKSTART_SCRIPT}" "setup script"
+  require_file "${BUILD_APP_SCRIPT}" "App builder"
+
+  print_header "Step 1 / 5" "업데이트 시작"
+  body "$(cat <<EOF
+${INK}Jelly Dict.app을 최신 코드와 런타임 상태로 갱신합니다.${RESET}
+${MUTED}${SCRIPT_DIR}${RESET}
+
+${FAINT}git 배포본이면 원격 변경을 가져온 뒤 환경과 앱 번들을 다시 만듭니다.${RESET}
+EOF
+)"
+  echo
+
+  if ! ask_yes_no "Jelly Dict.app 업데이트를 시작할까요?" "yes"; then
+    print_header "취소" "업데이트 중단" "compact"
+    note "업데이트를 시작하지 않았습니다."
+    press_any_key "닫으려면 아무 키나"
+    exit 0
+  fi
+
+  mkdir -p "$(dirname "${UPDATE_LOG}")" 2>/dev/null || true
+  : > "${UPDATE_LOG}" 2>/dev/null || true
+
+  if repo_is_git_worktree; then
+    if repo_has_local_changes; then
+      local status_preview
+      status_preview="$(repo_status_preview)"
+      print_header "오류" "로컬 변경 있음"
+      fail_ln "로컬 변경이 있어 자동 업데이트를 중단합니다."
+      body "$(cat <<EOF
+${MUTED}업데이트가 사용자 변경을 덮지 않도록 여기서 멈춥니다.${RESET}
+
+${FAINT}${status_preview}${RESET}
+EOF
+)"
+      press_any_key "닫으려면 아무 키나"
+      exit 1
+    fi
+
+    print_header "Step 2 / 5" "소스 업데이트"
+    body "$(cat <<EOF
+${INK}git pull --ff-only로 최신 소스를 가져옵니다.${RESET}
+${FAINT}자세한 로그: ${UPDATE_LOG}${RESET}
+EOF
+)"
+    echo
+    if ! spin "최신 소스 확인 중" run_git_pull_logged; then
+      print_header "오류" "소스 업데이트 실패"
+      fail_ln "원격 소스를 가져오지 못했습니다."
+      note "로그: ${UPDATE_LOG}"
+      show_log_tail "${UPDATE_LOG}"
+      press_any_key "닫으려면 아무 키나"
+      exit 1
+    fi
+    success "소스 업데이트 완료"
+  else
+    print_header "Step 2 / 5" "소스 확인"
+    body "$(cat <<EOF
+${INK}이 폴더는 git 작업 폴더가 아닙니다.${RESET}
+${MUTED}원격 소스 pull은 건너뛰고 현재 파일로 앱을 다시 만듭니다.${RESET}
+EOF
+)"
+    echo
+    if ! ask_yes_no "로컬 앱 재빌드를 계속할까요?" "yes"; then
+      print_header "취소" "업데이트 중단" "compact"
+      note "로컬 재빌드를 시작하지 않았습니다."
+      press_any_key "닫으려면 아무 키나"
+      exit 0
+    fi
+  fi
+
+  local install_mode
+  install_mode="$(saved_update_install_mode)"
+
+  print_header "Step 3 / 5" "환경 업데이트"
+  body "$(cat <<EOF
+${INK}Python 패키지와 Playwright WebKit 상태를 갱신합니다.${RESET}
+${MUTED}설치 방식: ${install_mode}${RESET}
+${FAINT}자세한 로그: ${QUICKSTART_LOG}${RESET}
+EOF
+)"
+  echo
+
+  mkdir -p "$(dirname "${QUICKSTART_LOG}")" 2>/dev/null || true
+  : > "${QUICKSTART_LOG}" 2>/dev/null || true
+  if ! install_progress "패키지 업데이트 중" "${QUICKSTART_LOG}" run_quickstart_install_logged --mode "${install_mode}"; then
+    print_header "오류" "환경 업데이트 실패"
+    fail_ln "의존성 업데이트를 완료하지 못했습니다."
+    note "로그: ${QUICKSTART_LOG}"
+    show_log_tail "${QUICKSTART_LOG}"
+    press_any_key "닫으려면 아무 키나"
+    exit 1
+  fi
+
+  print_header "Step 4 / 5" "앱 번들 생성"
+  body "$(cat <<EOF
+${INK}app_files/dist/${APP_NAME} 번들을 다시 생성합니다.${RESET}
+${MUTED}아이콘, repo 경로, 런처, ad-hoc codesign을 적용합니다.${RESET}
+${FAINT}자세한 로그: ${UPDATE_LOG}${RESET}
+EOF
+)"
+  echo
+
+  if ! spin "앱 번들 생성 중" run_build_app_update_logged; then
+    print_header "오류" "앱 번들 실패"
+    fail_ln "app_files/dist/${APP_NAME}을 만들지 못했습니다."
+    note "로그: ${UPDATE_LOG}"
+    show_log_tail "${UPDATE_LOG}"
+    press_any_key "닫으려면 아무 키나"
+    exit 1
+  fi
+
+  if [[ ! -d "${DIST_APP}" ]]; then
+    print_header "오류" "앱 번들 누락"
+    fail_ln "생성된 앱을 찾지 못했습니다."
+    note "${DIST_APP}"
+    press_any_key "닫으려면 아무 키나"
+    exit 1
+  fi
+
+  success "생성 완료: ${DIST_APP}"
+
+  if [[ -d "${USER_APP}" ]]; then
+    copy_dist_app_to_user_apps
+  else
+    print_header "Step 4 / 5" "Applications 복사"
+    body "$(cat <<EOF
+${INK}개인 Applications 폴더에 앱을 복사할 수 있습니다.${RESET}
+${MUTED}sudo 없이 ${USER_APPS_DIR}에 설치합니다.${RESET}
+EOF
+)"
+    echo
+    if ask_yes_no "Jelly Dict.app을 ~/Applications에 복사할까요?" "yes"; then
+      copy_dist_app_to_user_apps
+    else
+      APP_TO_OPEN="${DIST_APP}"
+      warn "~/Applications 복사를 건너뛰었습니다."
+    fi
+  fi
+
+  finish_with_app "${APP_TO_OPEN}"
+}
+
+if [[ "${COMMAND_ROLE}" == "update" ]]; then
+  run_update_flow
+fi
 
 accept_license_or_exit
 handle_interrupted_install_if_needed

@@ -78,12 +78,14 @@ def test_release_version_is_consistent_across_public_entrypoints():
     assert re.fullmatch(r"\d+\.\d+(?:\.\d+)?", version)
 
     installer = _read(PROJECT_ROOT / "Install jelly dict.command")
+    updater = _read(PROJECT_ROOT / "Update jelly dict.command")
     readme = _read(PROJECT_ROOT / "README.md")
     plist = plistlib.loads(
         (APP_FILES_ROOT / "packaging" / "macos" / "Info.plist").read_bytes()
     )
 
     assert f'JELLY_DICT_VERSION="{version}"' in installer
+    assert "JELLY_DICT_COMMAND_ROLE=update" in updater
     assert f"v{version}" in readme
     assert plist["CFBundleShortVersionString"] == version
     assert plist["CFBundleVersion"] == version
@@ -139,6 +141,7 @@ def test_kokoro_spacy_model_install_uses_direct_wheel_url():
     "relative_path",
     [
         Path("Install jelly dict.command"),
+        Path("Update jelly dict.command"),
         Path("app_files/scripts/quickstart.sh"),
         Path("app_files/scripts/run.sh"),
         Path("app_files/packaging/macos/build_app.sh"),
@@ -174,6 +177,19 @@ def test_macos_bundle_metadata_and_assets_are_present():
     assert (APP_FILES_ROOT / "assets" / "app-icon-1024.png").is_file()
     assert (APP_FILES_ROOT / "assets" / "app-icon.icns").is_file()
     assert (APP_FILES_ROOT / "packaging" / "macos" / "launcher.sh").is_file()
+
+
+def test_updater_uses_installer_ui_entrypoint():
+    installer = _read(PROJECT_ROOT / "Install jelly dict.command")
+    updater = _read(PROJECT_ROOT / "Update jelly dict.command")
+    quickstart = _read(APP_FILES_ROOT / "scripts" / "quickstart.sh")
+    package_script = _read(APP_FILES_ROOT / "scripts" / "make_user_package.sh")
+
+    assert 'COMMAND_LABEL="Updater"' in installer
+    assert 'draw_border top "jelly dict  ·  ${COMMAND_LABEL}  ·  v${JELLY_DICT_VERSION}"' in installer
+    assert 'exec "${SCRIPT_DIR}/Install jelly dict.command" "$@"' in updater
+    assert "${PUBLIC_ROOT}/Update jelly dict.command" in quickstart
+    assert '"${OUT_DIR}/Update jelly dict.command"' in package_script
 
 
 def test_macos_app_launcher_embeds_python_instead_of_execing_python():

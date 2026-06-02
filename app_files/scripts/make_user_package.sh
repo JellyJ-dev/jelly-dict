@@ -38,6 +38,7 @@ fi
 mkdir -p "${APP_FILES}"
 
 cp "${PUBLIC_ROOT}/Install jelly dict.command" "${OUT_DIR}/"
+cp "${PUBLIC_ROOT}/Update jelly dict.command" "${OUT_DIR}/"
 cp "${PUBLIC_ROOT}/Run jelly dict.command" "${OUT_DIR}/"
 cp "${PUBLIC_ROOT}/README.md" "${OUT_DIR}/"
 
@@ -76,7 +77,7 @@ for doc in LICENSE THIRD_PARTY_NOTICES.md; do
   fi
 done
 
-chmod +x "${OUT_DIR}/Install jelly dict.command" "${OUT_DIR}/Run jelly dict.command"
+chmod +x "${OUT_DIR}/Install jelly dict.command" "${OUT_DIR}/Update jelly dict.command" "${OUT_DIR}/Run jelly dict.command"
 chmod +x "${APP_FILES}/scripts/quickstart.sh" "${APP_FILES}/scripts/run.sh"
 chmod +x "${APP_FILES}/packaging/macos/build_app.sh" "${APP_FILES}/packaging/macos/make_icns.sh" 2>/dev/null || true
 
