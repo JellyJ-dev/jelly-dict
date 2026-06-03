@@ -9,6 +9,7 @@ from app.core.models import (
     build_meanings_summary,
     collect_examples_flat,
     normalize_word_key,
+    sanitize_meaning_gloss,
     wordbook_meaning_hint,
 )
 
@@ -104,6 +105,35 @@ def test_wordbook_meaning_hint_keeps_single_sense_plain():
     )
 
     assert wordbook_meaning_hint(entry) == "공연"
+
+
+def test_english_meaning_sanitizer_drops_reference_and_english_noise():
+    assert sanitize_meaning_gloss("Mathematics ( Abbr .) P .", "en") == ""
+    assert sanitize_meaning_gloss("특히 美 (= artefact)", "en") == ""
+    assert (
+        sanitize_meaning_gloss("의학 흐름인공물, 흐름허상 (→ artifact)", "en")
+        == "의학 흐름인공물, 흐름허상"
+    )
+
+
+def test_english_summary_and_hint_skip_noisy_senses():
+    entry = VocabularyEntry(
+        language="en",
+        word="polynomial",
+        meaning_groups=[
+            MeaningGroup(
+                pos="Noun",
+                senses=[
+                    Sense(number=1, gloss="다명"),
+                    Sense(number=2, gloss="Mathematics ( Abbr .) P ."),
+                    Sense(number=3, gloss="수학 다항식"),
+                ],
+            )
+        ],
+    )
+
+    assert build_meanings_summary(entry) == "[Noun] 1. 다명 2. 수학 다항식"
+    assert wordbook_meaning_hint(entry) == "1.다명 2.수학 다항식"
 
 
 def test_collect_examples_flat_orders_examples():

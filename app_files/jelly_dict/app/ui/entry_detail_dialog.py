@@ -6,7 +6,12 @@ from urllib.parse import urlparse
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from app.core.models import VocabularyEntry, build_meanings_summary, collect_examples_flat
+from app.core.models import (
+    VocabularyEntry,
+    build_meanings_summary,
+    collect_examples_flat,
+    sanitize_meaning_gloss,
+)
 from app.services.tts_audio_service import cached_audio_path_for_text, tts_configured
 from app.services.tts_process_service import synthesize_text_audio_in_process
 from app.storage.settings_store import Settings
@@ -231,13 +236,16 @@ class EntryDetailDialog(QtWidgets.QDialog):
     def _add_meanings(self, layout: QtWidgets.QVBoxLayout) -> None:
         if self._entry.meaning_groups:
             for group in self._entry.meaning_groups:
+                visible_index = 0
                 for sense in group.senses:
                     text = sense.gloss.strip()
                     if not text and sense.sub_senses:
                         text = sense.sub_senses[0].gloss.strip()
+                    text = sanitize_meaning_gloss(text, self._entry.language)
                     if not text:
                         continue
-                    row = QtWidgets.QLabel(f"{sense.number or ''}. {text}".strip())
+                    visible_index += 1
+                    row = QtWidgets.QLabel(f"{visible_index}. {text}")
                     row.setObjectName("entryDetailSenseRow")
                     row.setTextFormat(QtCore.Qt.PlainText)
                     row.setWordWrap(True)
@@ -247,7 +255,15 @@ class EntryDetailDialog(QtWidgets.QDialog):
         # Fallback: no nested meaning_groups (entry came from Excel-only
         # row). Split the summary string into individual sense rows so
         # multi-sense words read top-to-bottom instead of as one wall.
-        for index, gloss in enumerate(_split_summary_senses(self._entry.meanings_summary), start=1):
+        visible = [
+            gloss
+            for gloss in (
+                sanitize_meaning_gloss(gloss, self._entry.language)
+                for gloss in _split_summary_senses(self._entry.meanings_summary)
+            )
+            if gloss
+        ]
+        for index, gloss in enumerate(visible, start=1):
             row = QtWidgets.QLabel(f"{index}. {gloss}")
             row.setObjectName("entryDetailSenseRow")
             row.setTextFormat(QtCore.Qt.PlainText)
@@ -383,14 +399,23 @@ def _first_gloss(entry: VocabularyEntry) -> str:
     for group in entry.meaning_groups:
         for sense in group.senses:
             if sense.gloss:
-                return sense.gloss.strip()
+                gloss = sanitize_meaning_gloss(sense.gloss, entry.language)
+                if gloss:
+                    return gloss
             for sub in sense.sub_senses:
                 if sub.gloss:
-                    return sub.gloss.strip()
+                    gloss = sanitize_meaning_gloss(sub.gloss, entry.language)
+                    if gloss:
+                        return gloss
     summary = entry.meanings_summary or build_meanings_summary(entry)
     if not summary:
         return ""
     senses = _split_summary_senses(summary)
+    senses = [
+        gloss
+        for gloss in (sanitize_meaning_gloss(gloss, entry.language) for gloss in senses)
+        if gloss
+    ]
     if senses:
         # Show only the first sense in the header; the body section
         # below renders every sense on its own row for multi-meaning

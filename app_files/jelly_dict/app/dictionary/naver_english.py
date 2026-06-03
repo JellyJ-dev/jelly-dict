@@ -22,6 +22,7 @@ from app.core.models import (
     VocabularyEntry,
     build_meanings_summary,
     collect_examples_flat,
+    sanitize_meaning_gloss,
 )
 from app.dictionary.parser_utils import (
     dedup_preserve_order,
@@ -70,23 +71,6 @@ SEL_RELATION_ITEM = ".cont .item"
 WAIT_SELECTOR = "#allMeanGroups, .mean_tray.important_words, .entry_pronounce, .mean_list .mean_item .mean_desc"
 
 log = logging.getLogger(__name__)
-
-_HANGUL_RE = re.compile(r"[가-힣]")
-_REFERENCE_RE = re.compile(r"\s*(?:\((?:=|→|->)\s*[^)]*\)|(?:=|→|->)\s*\S+)\s*")
-_GLOSS_STOPWORDS = {
-    "구어",
-    "드물게",
-    "문어",
-    "미국",
-    "방언",
-    "비격식",
-    "속어",
-    "영국",
-    "용어",
-    "전문",
-    "주로",
-    "특히",
-}
 
 
 def lookup_url(word: str) -> str:
@@ -376,26 +360,7 @@ def _renumber_groups(groups: list[MeaningGroup]) -> list[MeaningGroup]:
 
 
 def _clean_meaning_gloss(text: str) -> str:
-    gloss = _normalize_gloss_text(text)
-    if not gloss:
-        return ""
-    gloss = _REFERENCE_RE.sub(" ", gloss)
-    gloss = re.sub(r"\s+", " ", gloss).strip(" .;")
-    if not _is_usable_korean_gloss(gloss):
-        return ""
-    return gloss
-
-
-def _normalize_gloss_text(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "")).strip()
-
-
-def _is_usable_korean_gloss(gloss: str) -> bool:
-    if not _HANGUL_RE.search(gloss):
-        return False
-    chunks = re.findall(r"[가-힣]+", gloss)
-    meaningful = [chunk for chunk in chunks if chunk not in _GLOSS_STOPWORDS]
-    return bool(meaningful)
+    return sanitize_meaning_gloss(text, "en")
 
 
 def _parse_examples(sense_node) -> list[Example]:

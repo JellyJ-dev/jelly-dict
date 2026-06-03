@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -9,6 +10,23 @@ from typing import Any, Literal
 
 Language = Literal["en", "ja"]
 SourceProvider = Literal["naver_en", "naver_ja", "manual", "naver_api", "unknown"]
+
+_EN_HANGUL_RE = re.compile(r"[가-힣]")
+_EN_REFERENCE_RE = re.compile(r"\s*(?:\((?:=|→|->)\s*[^)]*\)|(?:=|→|->)\s*\S+)\s*")
+_EN_GLOSS_STOPWORDS = {
+    "구어",
+    "드물게",
+    "문어",
+    "미국",
+    "방언",
+    "비격식",
+    "속어",
+    "영국",
+    "용어",
+    "전문",
+    "주로",
+    "특히",
+}
 
 
 def _now_utc() -> str:
@@ -157,10 +175,11 @@ def build_meanings_summary(entry: VocabularyEntry) -> str:
         gloss = (sense.gloss or "").strip()
         if not gloss and sense.sub_senses:
             gloss = (sense.sub_senses[0].gloss or "").strip()
+        gloss = sanitize_meaning_gloss(gloss, entry.language)
         if not gloss:
             continue
         gloss = _short_gloss(gloss)
-        number = sense.number if sense.number else len(parts) + 1
+        number = len(parts) + 1
         parts.append(f"{number}. {gloss}")
 
     body = " ".join(parts)
@@ -190,15 +209,22 @@ def first_meaning_hint(entry: VocabularyEntry, limit: int = 40) -> str:
     for group in entry.meaning_groups:
         for sense in group.senses:
             if sense.gloss:
-                return _trim_hint(sense.gloss, limit=limit)
+                gloss = sanitize_meaning_gloss(sense.gloss, entry.language)
+                if gloss:
+                    return _trim_hint(gloss, limit=limit)
             for sub in sense.sub_senses:
                 if sub.gloss:
-                    return _trim_hint(sub.gloss, limit=limit)
+                    gloss = sanitize_meaning_gloss(sub.gloss, entry.language)
+                    if gloss:
+                        return _trim_hint(gloss, limit=limit)
     if entry.meanings_summary:
         stripped = re.sub(r"^\[[^\]]+\]\s*", "", entry.meanings_summary)
         # Tolerate the variants " 1.", "1 .", "1.1.", " 1 . 1 . " etc.
-        stripped = re.sub(r"^\s*(?:\d+\s*\.\s*)+", "", stripped)
-        return _trim_hint(stripped, limit=limit)
+        parts = re.split(r"\s*\d+\s*\.\s*", stripped)
+        for part in parts:
+            gloss = sanitize_meaning_gloss(part, entry.language)
+            if gloss:
+                return _trim_hint(gloss, limit=limit)
     return ""
 
 
@@ -215,10 +241,11 @@ def wordbook_meaning_hint(entry: VocabularyEntry, limit: int = 160) -> str:
             gloss = (sense.gloss or "").strip()
             if not gloss and sense.sub_senses:
                 gloss = (sense.sub_senses[0].gloss or "").strip()
+            gloss = sanitize_meaning_gloss(gloss, entry.language)
             if not gloss:
                 continue
             gloss = _short_gloss(gloss)
-            number = sense.number if sense.number else len(parts) + 1
+            number = len(parts) + 1
             parts.append(f"{number}.{gloss}")
     if len(parts) > 1:
         return _trim_hint(" ".join(parts), limit=limit)
@@ -232,6 +259,30 @@ def _trim_hint(text: str, limit: int = 40) -> str:
     if len(text) > limit:
         text = text[: limit - 1] + "…"
     return text
+
+
+def sanitize_meaning_gloss(text: str, language: Language = "en") -> str:
+    """Return a displayable meaning gloss.
+
+    Naver English pages mix Korean definitions with cross-reference-only
+    rows, domain abbreviations, and English dictionary snippets. Those
+    are not useful saved meanings, so English entries require at least
+    one Korean content token after references are stripped.
+    """
+    gloss = re.sub(r"\s+", " ", (text or "")).strip()
+    if not gloss:
+        return ""
+    if language != "en":
+        return gloss
+    gloss = _EN_REFERENCE_RE.sub(" ", gloss)
+    gloss = re.sub(r"\s+", " ", gloss).strip(" .;")
+    if not _EN_HANGUL_RE.search(gloss):
+        return ""
+    chunks = re.findall(r"[가-힣]+", gloss)
+    meaningful = [chunk for chunk in chunks if chunk not in _EN_GLOSS_STOPWORDS]
+    if not meaningful:
+        return ""
+    return gloss
 
 
 def collect_examples_flat(entry: VocabularyEntry) -> list[Example]:

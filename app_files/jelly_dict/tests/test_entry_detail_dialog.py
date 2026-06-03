@@ -108,6 +108,44 @@ def test_entry_detail_body_omits_part_of_speech_section(qtbot):
     assert "1. 연이은" in _label_texts(dialog)
 
 
+def test_entry_detail_filters_stale_english_meaning_noise(qtbot):
+    entry = VocabularyEntry(
+        language="en",
+        word="polynomial",
+        part_of_speech=["ADJECTIVE", "Noun"],
+        meaning_groups=[
+            MeaningGroup(
+                pos="ADJECTIVE",
+                senses=[
+                    Sense(number=1, gloss="다명(多名)의"),
+                    Sense(number=2, gloss="수학 다항(식)의"),
+                ],
+            ),
+            MeaningGroup(
+                pos="Noun",
+                senses=[
+                    Sense(number=1, gloss="다명"),
+                    Sense(number=2, gloss="수학 다항식"),
+                    Sense(number=3, gloss="Mathematics ( Abbr .) P ."),
+                    Sense(number=4, gloss="다항식"),
+                ],
+            ),
+        ],
+    )
+    dialog = EntryDetailDialog(entry)
+    qtbot.addWidget(dialog)
+
+    sense_rows = [
+        label.text()
+        for label in dialog.findChildren(QtWidgets.QLabel, "entryDetailSenseRow")
+    ]
+
+    assert "Mathematics ( Abbr .) P ." not in sense_rows
+    assert "1. 다명" in sense_rows
+    assert "2. 수학 다항식" in sense_rows
+    assert "3. 다항식" in sense_rows
+
+
 def test_entry_detail_preserves_full_word_when_title_uses_primary_form(qtbot):
     entry = VocabularyEntry(
         language="ja",
