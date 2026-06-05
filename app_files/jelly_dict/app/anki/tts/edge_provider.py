@@ -18,8 +18,12 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.anki.tts.base import ProviderInfo, TTSResult
+
+if TYPE_CHECKING:
+    from app.storage.settings_store import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +61,7 @@ class EdgeProvider:
     def is_available(cls) -> bool:
         return shutil.which("edge-tts") is not None
 
-    def __init__(self, settings) -> None:
+    def __init__(self, settings: "Settings") -> None:
         self._settings = settings
 
     def synthesize(

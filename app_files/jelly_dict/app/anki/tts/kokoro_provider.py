@@ -6,9 +6,13 @@ Requires the optional dependency group: see requirements-tts.txt.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.anki.tts.base import ProviderInfo, TTSResult
 from app.anki.tts.transcode import wav_to_mp3
+
+if TYPE_CHECKING:
+    from app.storage.settings_store import Settings
 
 KOKORO_REPO_ID = "hexgrad/Kokoro-82M"
 KOKORO_REQUIRED_FILES: tuple[str, ...] = (
@@ -71,7 +75,7 @@ class KokoroProvider:
             and _local_voice_path("jf_alpha") is not None
         )
 
-    def __init__(self, settings) -> None:
+    def __init__(self, settings: "Settings") -> None:
         self._settings = settings
         self._model = None
         self._pipeline_en = None

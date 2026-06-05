@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 from app.core.models import MeaningGroup, Sense, VocabularyEntry
 from app.storage.cache_store import CacheStore
 
@@ -166,3 +168,23 @@ def test_stale_naver_english_cache_is_ignored(isolated_runtime):
     recent = cache.recent_with_entries(10)
     assert len(recent) == 1
     assert recent[0][-1] is None
+
+
+def test_cache_store_connection_can_be_shared_across_threads(isolated_runtime):
+    cache = CacheStore()
+    errors: list[BaseException] = []
+
+    def upsert(index: int) -> None:
+        try:
+            cache.upsert(VocabularyEntry(language="en", word=f"word-{index}"))
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=upsert, args=(index,)) for index in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert cache.get("word-5", "en") is not None

@@ -114,10 +114,6 @@ class _VoicevoxVoicePicker(QtWidgets.QDialog):
 def _section_header(text: str) -> QtWidgets.QLabel:
     label = QtWidgets.QLabel(text)
     label.setObjectName("settingsSectionHeader")
-    label.setStyleSheet(
-        "font-weight: 600; color: #e7e1d6; padding: 12px 0 4px 0;"
-        "border-top: 1px solid #3f3f3c; margin-top: 8px;"
-    )
     return label
 
 
@@ -129,10 +125,14 @@ def _muted_label(text: str) -> QtWidgets.QLabel:
     label.setSizePolicy(
         QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred
     )
-    label.setStyleSheet(
-        "color: #aaa59c; font-size: 12px; padding: 4px 0;"
-    )
     return label
+
+
+def set_status_state(label: QtWidgets.QLabel, state: str) -> None:
+    label.setProperty("statusState", state)
+    label.style().unpolish(label)
+    label.style().polish(label)
+    label.update()
 
 
 class _PathPicker(QtWidgets.QWidget):

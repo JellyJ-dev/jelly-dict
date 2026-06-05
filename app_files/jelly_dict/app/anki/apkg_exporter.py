@@ -14,13 +14,20 @@ the card templates via ``WordAudio`` / ``ExampleAudios`` fields.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from app.anki.temp_utils import new_temp_path
 from app.anki.render import FIELD_ORDER, fields_for_entry, load_template
 from app.core.errors import ExportError
 from app.core.models import Language, VocabularyEntry, normalize_word_key
+
+if TYPE_CHECKING:
+    from app.anki.tts.pipeline import TTSBatch, TTSPipeline
+    from app.storage.settings_store import Settings
+
+ProgressCallback = Callable[[int, int, str], None]
 
 # Stable model IDs. Do not change: changing these splits a user's deck.
 MODEL_ID_EN = 1_701_524_001
@@ -32,8 +39,8 @@ def export_apkg(
     path: Path,
     entries: Iterable[VocabularyEntry],
     deck_name: str,
-    settings=None,
-    progress_callback=None,
+    settings: "Settings | None" = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> int:
     """Build an APKG package.
 
@@ -127,7 +134,12 @@ def export_apkg(
     return count
 
 
-def _build_audio_map(entry, pipeline, batch, settings):
+def _build_audio_map(
+    entry: VocabularyEntry,
+    pipeline: "TTSPipeline | None",
+    batch: "TTSBatch | None",
+    settings: "Settings | None",
+) -> dict[str, object] | None:
     if pipeline is None:
         return None
     word_path = pipeline.synthesize(entry.word, entry.language, batch)

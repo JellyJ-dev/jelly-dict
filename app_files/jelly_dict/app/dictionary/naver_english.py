@@ -14,6 +14,9 @@ import logging
 import re
 from typing import Callable
 
+from bs4 import BeautifulSoup
+from bs4.element import Tag
+
 from app.core.models import (
     Example,
     MeaningGroup,
@@ -134,7 +137,7 @@ def parse_with_canonical(
     entry.meanings_summary = build_meanings_summary(entry)
     return entry, canonical
 
-def _first_audio_url(soup, base_url: str) -> str | None:
+def _first_audio_url(soup: BeautifulSoup | Tag, base_url: str) -> str | None:
     """Naver renders pronunciations through a JS TTS API rather than a
     static <audio src>. We do not synthesize the URL — return None and
     let the user trigger native playback through the source page."""
@@ -188,7 +191,7 @@ def _parse_search_result_rows(
     return groups, canonical
 
 
-def _select_search_result_rows(soup, typed_lower: str):
+def _select_search_result_rows(soup: BeautifulSoup | Tag, typed_lower: str) -> list[Tag]:
     candidates: list[tuple[int, object, str]] = []
     for row in soup.select(".row"):
         link = row.select_one(".origin a.link, .origin .text")
@@ -235,7 +238,7 @@ def _simple_lemma_key(value: str) -> str:
     return text
 
 
-def _parse_meaning_groups(soup) -> list[MeaningGroup]:
+def _parse_meaning_groups(soup: BeautifulSoup | Tag) -> list[MeaningGroup]:
     """Walk the meaning tray, pairing each .part_area with its sibling
     .mean_list as one MeaningGroup."""
     tray = (
@@ -334,7 +337,7 @@ def _clean_meaning_gloss(text: str) -> str:
     return sanitize_meaning_gloss(text, "en")
 
 
-def _parse_examples(sense_node) -> list[Example]:
+def _parse_examples(sense_node: Tag) -> list[Example]:
     """Pull every .example_item under this sense's direct .example block."""
     block = sense_node.find("div", class_="example", recursive=False)
     if block is None:

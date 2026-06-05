@@ -28,6 +28,9 @@ from __future__ import annotations
 import logging
 import re
 
+from bs4 import BeautifulSoup
+from bs4.element import Tag
+
 from app.core.models import (
     Example,
     MeaningGroup,
@@ -136,7 +139,7 @@ def parse_with_canonical(
     return entry, canonical_head
 
 
-def _find_primary_row(soup):
+def _find_primary_row(soup: BeautifulSoup | Tag) -> Tag | None:
     """Return the first .row that contains a .word_class — that's a real
     dictionary entry (other .row instances are pagination/ads/UI)."""
     for row in soup.select(".row"):
@@ -236,7 +239,7 @@ def _parse_senses(entry_row) -> list[Sense]:
     return senses
 
 
-def _parse_examples(soup) -> list[Example]:
+def _parse_examples(soup: BeautifulSoup | Tag) -> list[Example]:
     section = first(soup, SEL_EXAMPLE_SECTION)
     if section is None:
         return []

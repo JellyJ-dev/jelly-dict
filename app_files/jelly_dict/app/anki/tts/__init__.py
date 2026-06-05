@@ -7,12 +7,17 @@ through the settings UI and the deck description.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.anki.tts.base import (
     TTSProvider,
     TTSResult,
     ProviderInfo,
     NoTTSProvider,
 )
+
+if TYPE_CHECKING:
+    from app.storage.settings_store import Settings
 
 
 def list_provider_classes() -> dict[str, type[TTSProvider]]:
@@ -45,7 +50,7 @@ def get_provider_info(name: str) -> ProviderInfo:
     return cls.info()
 
 
-def build_provider(name: str, settings) -> TTSProvider:
+def build_provider(name: str, settings: "Settings") -> TTSProvider:
     """Construct a provider instance, or NoTTSProvider when disabled/missing."""
     if not name or name == "none":
         return NoTTSProvider()

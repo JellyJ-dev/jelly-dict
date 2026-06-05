@@ -65,10 +65,11 @@ class _RateLimiter:
             jitter = self._delay * self.JITTER_RATIO
             target = self._delay + random.uniform(-jitter, jitter)
             now = time.monotonic()
-            wait_for = target - (now - self._last_at)
-            if wait_for > 0:
-                time.sleep(wait_for)
-            self._last_at = time.monotonic()
+            next_at = self._last_at + target
+            wait_for = max(0.0, next_at - now)
+            self._last_at = next_at if wait_for > 0 else now
+        if wait_for > 0:
+            time.sleep(wait_for)
 
     def update_delay(self, delay_seconds: float) -> None:
         with self._lock:

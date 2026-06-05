@@ -4,7 +4,13 @@ from PySide6 import QtCore, QtWidgets
 
 from app.ui.dialog_buttons import configure_footer_button
 from app.ui.widgets.pill_scrollbar import install_pill_scrollbars
-from app.ui.settings_widgets import _PathPicker, _muted_label, _section_header, _settings_combo
+from app.ui.settings_widgets import (
+    _PathPicker,
+    _muted_label,
+    _section_header,
+    _settings_combo,
+    set_status_state,
+)
 from app.ui.settings_runtime_mixin import SAMPLE_TEXT_EN, SAMPLE_TEXT_JA
 
 
@@ -142,7 +148,7 @@ class SettingsBuildMixin:
         self.gv_key_test_btn.setObjectName("settingsSecondaryButton")
         self.gv_key_status = QtWidgets.QLabel("")
         self.gv_key_status.setObjectName("settingsStatus")
-        self.gv_key_status.setStyleSheet("color: #aaa59c;")
+        set_status_state(self.gv_key_status, "muted")
         gv_row = QtWidgets.QWidget()
         gv_layout = QtWidgets.QHBoxLayout(gv_row)
         gv_layout.setContentsMargins(0, 0, 0, 0)
@@ -179,7 +185,7 @@ class SettingsBuildMixin:
         self.ankiconnect_test_btn.setObjectName("settingsSecondaryButton")
         self.ankiconnect_status = QtWidgets.QLabel("")
         self.ankiconnect_status.setObjectName("settingsStatus")
-        self.ankiconnect_status.setStyleSheet("color: #888;")
+        set_status_state(self.ankiconnect_status, "pending")
         url_row = QtWidgets.QWidget()
         url_layout = QtWidgets.QHBoxLayout(url_row)
         url_layout.setContentsMargins(0, 0, 0, 0)
@@ -310,7 +316,7 @@ class SettingsBuildMixin:
         self.tts_clear_cache_btn.clicked.connect(self._clear_tts_cache)
         self.tts_cache_status = QtWidgets.QLabel("")
         self.tts_cache_status.setObjectName("settingsStatus")
-        self.tts_cache_status.setStyleSheet("color: #aaa59c;")
+        set_status_state(self.tts_cache_status, "muted")
 
         layout.addRow("", self.tts_enabled_check)
         layout.addRow("", self.tts_play_front_check)

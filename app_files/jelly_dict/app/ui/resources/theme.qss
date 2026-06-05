@@ -1146,6 +1146,27 @@ QLabel#settingsStatus {
     font-size: 12px;
     font-weight: 600;
 }
+QLabel#settingsStatus[statusState="pending"] {
+    color: #888888;
+}
+QLabel#settingsStatus[statusState="ok"] {
+    color: #22aa88;
+}
+QLabel#settingsStatus[statusState="error"] {
+    color: #dd3333;
+}
+QLabel#settingsSectionHeader {
+    color: #e7e1d6;
+    border-top: 1px solid #3f3f3c;
+    margin-top: 8px;
+    padding: 12px 0 4px 0;
+    font-weight: 600;
+}
+QLabel#settingsMutedLabel {
+    color: #aaa59c;
+    font-size: 12px;
+    padding: 4px 0;
+}
 QLabel#exportDialogTitle {
     color: #e7e1d6;
     font-size: 16px;

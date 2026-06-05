@@ -4,11 +4,15 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 log = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from app.storage.settings_store import Settings
 
-def wav_to_mp3(wav: Path, mp3: Path, settings) -> None:
+
+def wav_to_mp3(wav: Path, mp3: Path, settings: "Settings") -> None:
     """Transcode WAV to mono mp3 using ffmpeg, falling back to keeping WAV."""
     if shutil.which("ffmpeg") is None:
         log.warning("ffmpeg not found; keeping WAV at %s", wav)

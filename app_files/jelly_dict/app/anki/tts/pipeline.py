@@ -11,11 +11,14 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from app.anki.tts import build_provider, get_provider_info
-from app.anki.tts.base import TTSResult
+from app.anki.tts.base import TTSProvider, TTSResult
 from app.anki.tts.cache import cache_path, is_valid_audio_file, wordbook_audio_dir
+
+if TYPE_CHECKING:
+    from app.storage.settings_store import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +40,11 @@ class TTSBatch:
 class TTSPipeline:
     """Per-export pipeline. Caches provider instances keyed by name."""
 
-    def __init__(self, settings) -> None:
+    def __init__(self, settings: "Settings") -> None:
         self._settings = settings
-        self._providers = {}  # name -> provider instance
+        self._providers: dict[str, TTSProvider] = {}
 
-    def _provider_for(self, language: str):
+    def _provider_for(self, language: str) -> tuple[TTSProvider, str]:
         if language == "ja":
             name = self._settings.tts_engine_ja
         else:

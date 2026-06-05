@@ -7,6 +7,7 @@ module re-exports their public symbols so existing callers like
 keep working without import changes.
 """
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -41,6 +42,7 @@ from app.storage.excel_workbook_io import (
 )
 
 _save = save_workbook
+SaveResolver = Callable[[VocabularyEntry | None, VocabularyEntry], tuple[str, VocabularyEntry]]
 
 # Re-exports: keep the existing public surface identical.
 __all__ = [
@@ -191,10 +193,10 @@ def save_with_resolver(
     path: Path,
     entry: VocabularyEntry,
     columns: list[str],
-    resolver,
+    resolver: SaveResolver,
     *,
     backup_on_overwrite: bool = False,
-):
+) -> WriteOutcome:
     """Save one entry using an explicit duplicate-resolution action."""
     if not path.exists():
         ensure_workbook(path, columns)

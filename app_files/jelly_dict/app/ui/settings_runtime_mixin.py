@@ -6,7 +6,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.storage import secret_store
 from app.storage.settings_store import Settings
-from app.ui.settings_widgets import _VoicevoxVoicePicker
+from app.ui.settings_widgets import _VoicevoxVoicePicker, set_status_state
 from app.ui.settings_workers import (
     _AnkiConnectTestWorker,
     _GoogleVisionKeyTestWorker,
@@ -214,7 +214,7 @@ class SettingsRuntimeMixin:
         idx = self.ocr_combo.findData(getattr(settings, "ocr_provider", "apple_vision"))
         if idx >= 0:
             self.ocr_combo.setCurrentIndex(idx)
-        self.gv_key_status.setStyleSheet("color: #aaa59c;")
+        set_status_state(self.gv_key_status, "muted")
         self.gv_key_status.setText("키 상태 확인 중…")
 
         self.tts_enabled_check.setChecked(settings.tts_enabled)
@@ -318,17 +318,17 @@ class SettingsRuntimeMixin:
         if not self._run_network_test(worker, self._on_ankiconnect_test_finished):
             return
         self.ankiconnect_test_btn.setEnabled(False)
-        self.ankiconnect_status.setStyleSheet("color: #888;")
+        set_status_state(self.ankiconnect_status, "pending")
         self.ankiconnect_status.setText("연결 테스트 중…")
 
     @QtCore.Slot(bool, str)
     def _on_ankiconnect_test_finished(self, ok: bool, message: str) -> None:
         self.ankiconnect_test_btn.setEnabled(True)
         if ok:
-            self.ankiconnect_status.setStyleSheet("color: #2a8;")
+            set_status_state(self.ankiconnect_status, "ok")
             self.ankiconnect_status.setText("✓ 연결됨")
         else:
-            self.ankiconnect_status.setStyleSheet("color: #d33;")
+            set_status_state(self.ankiconnect_status, "error")
             self.ankiconnect_status.setText(message or "응답 없음")
 
     # ── Google Vision API key ──────────────────────────────────────
@@ -337,22 +337,22 @@ class SettingsRuntimeMixin:
 
     def _apply_gv_key_status(self, is_set: bool) -> None:
         if is_set:
-            self.gv_key_status.setStyleSheet("color: #2a8;")
+            set_status_state(self.gv_key_status, "ok")
             self.gv_key_status.setText("✓ Keychain에 저장됨")
         else:
-            self.gv_key_status.setStyleSheet("color: #aaa59c;")
+            set_status_state(self.gv_key_status, "muted")
             self.gv_key_status.setText("저장된 키가 없습니다")
 
     def _save_gv_key(self) -> None:
         value = self.gv_key_edit.text().strip()
         if not value:
-            self.gv_key_status.setStyleSheet("color: #d33;")
+            set_status_state(self.gv_key_status, "error")
             self.gv_key_status.setText("키를 입력하세요")
             return
         try:
             secret_store.set("google_vision_api_key", value)
         except Exception as exc:
-            self.gv_key_status.setStyleSheet("color: #d33;")
+            set_status_state(self.gv_key_status, "error")
             self.gv_key_status.setText(f"저장 실패: {type(exc).__name__}")
             return
         self.gv_key_edit.clear()
@@ -366,7 +366,7 @@ class SettingsRuntimeMixin:
     def _test_gv_key(self) -> None:
         key = secret_store.get("google_vision_api_key")
         if not key:
-            self.gv_key_status.setStyleSheet("color: #d33;")
+            set_status_state(self.gv_key_status, "error")
             self.gv_key_status.setText("키 미설정")
             return
         settings = self._store.load()
@@ -374,17 +374,17 @@ class SettingsRuntimeMixin:
         if not self._run_network_test(worker, self._on_gv_key_test_finished):
             return
         self.gv_key_test_btn.setEnabled(False)
-        self.gv_key_status.setStyleSheet("color: #aaa59c;")
+        set_status_state(self.gv_key_status, "muted")
         self.gv_key_status.setText("키 테스트 중…")
 
     @QtCore.Slot(bool, str)
     def _on_gv_key_test_finished(self, ok: bool, message: str) -> None:
         self.gv_key_test_btn.setEnabled(True)
         if not ok:
-            self.gv_key_status.setStyleSheet("color: #d33;")
+            set_status_state(self.gv_key_status, "error")
             self.gv_key_status.setText(message or "키 테스트 실패")
             return
-        self.gv_key_status.setStyleSheet("color: #2a8;")
+        set_status_state(self.gv_key_status, "ok")
         self.gv_key_status.setText("✓ 키가 정상입니다")
 
     def _run_network_test(self, worker: QtCore.QObject, finished_slot) -> bool:
@@ -420,8 +420,8 @@ class SettingsRuntimeMixin:
         self._network_test_worker = None
 
     def _set_busy_test_message(self) -> None:
-        self.ankiconnect_status.setStyleSheet("color: #d33;")
-        self.gv_key_status.setStyleSheet("color: #d33;")
+        set_status_state(self.ankiconnect_status, "error")
+        set_status_state(self.gv_key_status, "error")
         self.ankiconnect_status.setText("진행 중인 테스트가 끝난 뒤 다시 시도하세요.")
         self.gv_key_status.setText("진행 중인 테스트가 끝난 뒤 다시 시도하세요.")
 

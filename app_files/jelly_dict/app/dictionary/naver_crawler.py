@@ -105,8 +105,5 @@ def _suggestion_if_unrelated(typed: str, canonical: str, language: Language) -> 
         return canonical_norm
     # Japanese: split canonical on the · separator and treat each form
     # as an acceptable variant.
-    from app.dictionary.naver_japanese import did_you_mean
-
-    return did_you_mean(typed_norm, canonical_norm)
-
+    return naver_japanese.did_you_mean(typed_norm, canonical_norm)
 

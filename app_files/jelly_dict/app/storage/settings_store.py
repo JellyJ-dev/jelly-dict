@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,65 +25,69 @@ class SettingsStore:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or config.settings_path()
         self._cache: Settings | None = None
+        self._lock = threading.RLock()
 
     def load(self) -> Settings:
-        if self._cache is not None:
-            return self._cache
-        if not self.path.exists():
-            self._cache = _defaults()
-            self.save(self._cache)
-            return self._cache
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            # Corrupt settings: rebuild from defaults rather than crash.
-            self._backup_corrupt_settings()
-            self._cache = _defaults()
-            self.save(self._cache)
-            return self._cache
-        merged = _defaults()
-        valid_keys = {f.name for f in fields(Settings)}
-        for key, value in raw.items():
-            if key in valid_keys:
-                setattr(merged, key, _coerce_setting_value(key, value, getattr(merged, key)))
-        self._cache = merged
-        return merged
+        with self._lock:
+            if self._cache is not None:
+                return self._cache
+            if not self.path.exists():
+                self._cache = _defaults()
+                self.save(self._cache)
+                return self._cache
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                self._backup_corrupt_settings()
+                self._cache = _defaults()
+                self.save(self._cache)
+                return self._cache
+            merged = _defaults()
+            valid_keys = {f.name for f in fields(Settings)}
+            for key, value in raw.items():
+                if key in valid_keys:
+                    coerced = _coerce_setting_value(key, value, getattr(merged, key))
+                    setattr(merged, key, coerced)
+            self._cache = merged
+            return merged
 
     def save(self, settings: Settings) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(settings.to_dict(), ensure_ascii=False, indent=2) + "\n"
-        temp_name = ""
-        try:
-            with tempfile.NamedTemporaryFile(
-                "w",
-                delete=False,
-                dir=self.path.parent,
-                prefix=f".{self.path.name}.",
-                suffix=".tmp",
-                encoding="utf-8",
-            ) as temp_file:
-                temp_file.write(payload)
-                temp_file.flush()
-                os.fsync(temp_file.fileno())
-                temp_name = temp_file.name
-            Path(temp_name).replace(self.path)
-        finally:
-            if temp_name:
-                temp_path = Path(temp_name)
-                if temp_path.exists():
-                    try:
-                        temp_path.unlink()
-                    except OSError:
-                        pass
-        self._cache = settings
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps(settings.to_dict(), ensure_ascii=False, indent=2) + "\n"
+            temp_name = ""
+            try:
+                with tempfile.NamedTemporaryFile(
+                    "w",
+                    delete=False,
+                    dir=self.path.parent,
+                    prefix=f".{self.path.name}.",
+                    suffix=".tmp",
+                    encoding="utf-8",
+                ) as temp_file:
+                    temp_file.write(payload)
+                    temp_file.flush()
+                    os.fsync(temp_file.fileno())
+                    temp_name = temp_file.name
+                Path(temp_name).replace(self.path)
+            finally:
+                if temp_name:
+                    temp_path = Path(temp_name)
+                    if temp_path.exists():
+                        try:
+                            temp_path.unlink()
+                        except OSError:
+                            pass
+            self._cache = settings
 
     def update(self, **changes: Any) -> Settings:
-        current = self.load()
-        for key, value in changes.items():
-            if hasattr(current, key):
-                setattr(current, key, value)
-        self.save(current)
-        return current
+        with self._lock:
+            current = self.load()
+            for key, value in changes.items():
+                if hasattr(current, key):
+                    setattr(current, key, value)
+            self.save(current)
+            return current
 
     def _backup_corrupt_settings(self) -> Path | None:
         if not self.path.exists():

@@ -11,10 +11,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.anki.tts.base import ProviderInfo, TTSResult
 from app.anki.tts.transcode import wav_to_mp3
 from app.core.url_safety import require_loopback_http_url
+
+if TYPE_CHECKING:
+    from app.storage.settings_store import Settings
 
 # Curated default set. Only standard (`ノーマル`) styles, picking
 # personalities suitable for general listening — anything sexy/whisper/
@@ -128,7 +132,7 @@ class VoicevoxProvider:
         out.sort(key=lambda t: t[0])
         return tuple(label for _, label in out) or DEFAULT_VOICES_JA
 
-    def __init__(self, settings) -> None:
+    def __init__(self, settings: "Settings") -> None:
         self._settings = settings
         self._url = require_loopback_http_url(
             getattr(settings, "voicevox_url", "http://127.0.0.1:50021"),

@@ -50,10 +50,14 @@ def _migrate(conn) -> None:
     )
 
 
-def open_db(path: Path | None = None) -> sqlite3.Connection:
+def open_db(
+    path: Path | None = None,
+    *,
+    check_same_thread: bool = True,
+) -> sqlite3.Connection:
     path = path or config.cache_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     _migrate(conn)
