@@ -5,9 +5,9 @@ Per dev.md §16-A:
   - Domain whitelist is enforced via page.route().
   - Single global rate limiter throttles requests.
 
-Uses WebKit (Safari engine) — macOS-native, lighter than Chromium, and
-generally less likely to trip aggressive bot detection on Korean sites.
-Run `playwright install webkit` to fetch the engine.
+Uses Chromium headless. WebKit is closer to Safari, but its helper
+processes can interfere with macOS Mission Control while lookups are
+running. Run `playwright install chromium` to fetch the engine.
 
 Threading model:
   Playwright's sync API can only be driven from the thread that started
@@ -39,8 +39,8 @@ log = logging.getLogger(__name__)
 
 _DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/17.0 Safari/605.1.15"
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/125.0.0.0 Safari/537.36"
 )
 
 
@@ -116,7 +116,7 @@ class _PlaywrightOwnerThread(threading.Thread):
             self._startup_error.append(
                 NetworkError(
                     "Playwright is not installed. "
-                    "Run `pip install playwright && playwright install webkit`."
+                    "Run `pip install playwright && playwright install chromium`."
                 )
             )
             self._ready_event.set()
@@ -124,7 +124,7 @@ class _PlaywrightOwnerThread(threading.Thread):
 
         try:
             playwright = sync_playwright().start()
-            browser = playwright.webkit.launch(headless=self._headless)
+            browser = playwright.chromium.launch(headless=self._headless)
             context = browser.new_context(user_agent=self._user_agent)
         except Exception as exc:
             self._startup_error.append(NetworkError(f"browser launch failed: {exc}"))

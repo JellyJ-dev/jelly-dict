@@ -93,7 +93,7 @@ git으로 받은 폴더에서는 fast-forward 업데이트만 진행하고, 로�
 `Install jelly dict.command`는 다음 순서로 진행됩니다.
 
 1. repo 위치와 파일 구조를 확인합니다.
-2. Python, 가상환경, 필수 패키지, Playwright WebKit을 점검하고 필요하면 설치/복구합니다.
+2. Python, 가상환경, 필수 패키지, Playwright Chromium을 점검하고 필요하면 설치/복구합니다.
 3. `app_files/dist/Jelly Dict.app`을 생성합니다.
 4. `~/Applications`에 복사할지 묻습니다.
 5. 완료 후 앱을 바로 실행할지 묻습니다.
@@ -103,7 +103,7 @@ git으로 받은 폴더에서는 fast-forward 업데이트만 진행하고, 로�
 `Update jelly dict.command`는 동일한 터미널 UI를 사용해 다음 순서로 진행됩니다.
 
 1. git 배포본이면 `git pull --ff-only`로 최신 소스를 확인합니다.
-2. 기존 설치 방식을 유지해 Python 패키지와 Playwright WebKit을 갱신합니다.
+2. 기존 설치 방식을 유지해 Python 패키지와 Playwright Chromium을 갱신합니다.
 3. `app_files/dist/Jelly Dict.app`을 다시 생성합니다.
 4. 기존 `~/Applications/Jelly Dict.app`이 있으면 새 번들로 교체합니다.
 5. 완료 후 앱을 바로 실행할지 묻습니다.
@@ -112,7 +112,7 @@ git으로 받은 폴더에서는 fast-forward 업데이트만 진행하고, 로�
 
 ## 개발자용 실행
 
-jelly dict는 Python 패키지, Playwright WebKit, macOS 권한, 가상환경 상태에 영향을 받습니다.
+jelly dict는 Python 패키지, Playwright Chromium, macOS 권한, 가상환경 상태에 영향을 받습니다.
 
 일반 사용자는 `Install jelly dict.command`로 `.app`을 만든 뒤 실행하는 방식을 권장합니다.
 
@@ -147,7 +147,7 @@ app_files/jelly_dict/.jelly_dict/logs/launcher.log
 - 디스크 여유 공간이 충분한지
 - 폴더 이동 등으로 기존 `.venv`가 깨지지 않았는지
 - 필수 Python 패키지가 설치되어 있고 버전이 맞는지
-- Playwright WebKit이 설치되어 있는지
+- Playwright Chromium이 설치되어 있는지
 - macOS 격리 속성 문제가 있는지
 - Rosetta로 잘못 실행 중인지
 
@@ -297,7 +297,7 @@ VOICEVOX를 사용하려면 VOICEVOX 앱 또는 엔진을 따로 실행해 아�
 
 먼저 `Install jelly dict.command`를 다시 실행해 주세요.
 
-이 스크립트는 Python, 가상환경, 필수 패키지, Playwright WebKit, 권한, 디스크 공간, 앱 파일 구조를 다시 점검합니다.
+이 스크립트는 Python, 가상환경, 필수 패키지, Playwright Chromium, 권한, 디스크 공간, 앱 파일 구조를 다시 점검합니다.
 
 그래도 해결되지 않으면 GitHub Issues에 아래 정보를 함께 올려 주세요.
 

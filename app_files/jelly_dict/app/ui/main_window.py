@@ -238,6 +238,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._macos_titlebar_chrome_applied = False
         self._app_event_filter_installed = False
         self._app_state_signal_connected = False
+        self._main_window_hidden_by_shortcut = False
         self._titlebar_drag_origin: QtCore.QPoint | None = None
         self._titlebar_drag_window_origin: QtCore.QPoint | None = None
         self._titlebar_zoom_restore_geometry: QtCore.QRect | None = None
@@ -397,13 +398,39 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 from AppKit import NSApp
 
+                self._main_window_hidden_by_shortcut = True
                 NSApp.hide_(None)
                 return
             except Exception as exc:  # pragma: no cover - depends on macOS app session
                 log.info("macOS app hide fallback used: %s", exc)
+        self._main_window_hidden_by_shortcut = True
         self.hide()
 
     def _restore_hidden_main_window(self) -> None:
+        # Mission Control/App Expose can trigger activation changes while
+        # lookup browser workers are starting. Only restore windows that
+        # were actually hidden/minimized; otherwise leave macOS focus alone.
+        needs_restore = (
+            self._main_window_hidden_by_shortcut
+            or self.isMinimized()
+            or not self.isVisible()
+        )
+        if not needs_restore:
+            return
+
+        if (
+            self._main_window_hidden_by_shortcut
+            and sys.platform == "darwin"
+        ):
+            app = QtWidgets.QApplication.instance()
+            if app is not None and app.platformName().lower() == "cocoa":
+                try:
+                    from AppKit import NSApp
+
+                    NSApp.unhide_(None)
+                except Exception as exc:  # pragma: no cover - depends on macOS app session
+                    log.info("macOS app unhide fallback used: %s", exc)
+
         if self.isMinimized():
             self.showNormal()
         elif not self.isVisible():
@@ -411,6 +438,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.isVisible():
             self.raise_()
             self.activateWindow()
+        self._main_window_hidden_by_shortcut = False
 
     def _should_handle_titlebar_double_click(
         self,
@@ -754,9 +782,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _prewarm_browser(self) -> None:
         """Warm Playwright only after real user input.
 
-        macOS can show a crash report if WebKit is launched by a short-lived
-        offscreen validation process. Lookup still starts Playwright lazily
-        when needed; this path is only an interactive latency optimization.
+        Lookup still starts Playwright lazily when needed; this path is only
+        an interactive latency optimization.
         """
         if self._browser_prewarm_started:
             return

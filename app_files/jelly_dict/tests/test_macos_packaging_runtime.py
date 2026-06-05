@@ -123,6 +123,20 @@ def test_quickstart_qt_check_does_not_create_gui_application():
     assert "QApplication" not in qt_check
 
 
+def test_playwright_lookup_runtime_uses_chromium_not_webkit():
+    quickstart = _read(APP_FILES_ROOT / "scripts" / "quickstart.sh")
+    client = _read(JELLY_ROOT / "app" / "dictionary" / "playwright_client.py")
+    readme = _read(PROJECT_ROOT / "README.md")
+
+    assert "check_playwright_chromium()" in quickstart
+    assert "p.chromium.executable_path" in quickstart
+    assert "playwright install chromium" in quickstart
+    assert "Playwright Chromium" in readme
+    assert "playwright.chromium.launch" in client
+    assert "playwright.webkit.launch" not in client
+    assert "playwright install webkit" not in quickstart
+
+
 def test_kokoro_spacy_model_install_uses_direct_wheel_url():
     quickstart = _read(APP_FILES_ROOT / "scripts" / "quickstart.sh")
     worker = _read(JELLY_ROOT / "app" / "ui" / "tts_install_worker.py")

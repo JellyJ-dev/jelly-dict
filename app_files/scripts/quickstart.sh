@@ -486,7 +486,7 @@ print(f"  ✓ Qt runtime: {QtCore.qVersion()} / cocoa plugin")
 PY
 }
 
-check_playwright_webkit() {
+check_playwright_chromium() {
   "$(python_command)" - <<'PY'
 import importlib.util
 from pathlib import Path
@@ -497,10 +497,10 @@ if importlib.util.find_spec("playwright") is None:
 from playwright.sync_api import sync_playwright
 
 with sync_playwright() as p:
-    path = Path(p.webkit.executable_path)
+    path = Path(p.chromium.executable_path)
     if not path.exists():
         raise SystemExit(1)
-print("  ✓ Playwright WebKit")
+print("  ✓ Playwright Chromium")
 PY
 }
 
@@ -806,10 +806,10 @@ check_environment() {
       failed=1
     fi
 
-    if check_playwright_webkit; then
+    if check_playwright_chromium; then
       :
     else
-      echo "  ✗ Playwright WebKit missing"
+      echo "  ✗ Playwright Chromium missing"
       failed=1
     fi
 
@@ -874,7 +874,7 @@ if [[ "${WITH_TTS}" -eq 1 ]]; then
   run_logged "Kokoro 일본어 사전 설치" "$(python_command)" -m unidic download
 fi
 
-run_logged "Playwright WebKit 설치" "$(python_command)" -m playwright install webkit
+run_logged "Playwright Chromium 설치" "$(python_command)" -m playwright install chromium
 
 echo
 if ! check_environment; then

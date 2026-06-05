@@ -77,8 +77,12 @@ def test_main_window_close_shortcut_hides_app_and_can_restore():
 
     assert "QKeySequence.StandardKey.Close" in source
     assert "self.close_shortcut.activated.connect(self._hide_main_window)" in source
+    assert "_main_window_hidden_by_shortcut" in source
     assert "NSApp.hide_(None)" in source
+    assert "NSApp.unhide_(None)" in source
     assert "_restore_hidden_main_window" in source
+    assert "needs_restore = (" in source
+    assert "if not needs_restore:" in source
     assert "ApplicationActivate" in source
     assert "applicationStateChanged.connect(self._on_application_state_changed)" in source
     assert "self.close_shortcut.activated.connect(self.hide)" not in source
