@@ -5,14 +5,11 @@ Requires the optional dependency group: see requirements-tts.txt.
 """
 from __future__ import annotations
 
-import logging
-import shutil
-import subprocess
 from pathlib import Path
 
 from app.anki.tts.base import ProviderInfo, TTSResult
+from app.anki.tts.transcode import wav_to_mp3
 
-logger = logging.getLogger(__name__)
 KOKORO_REPO_ID = "hexgrad/Kokoro-82M"
 KOKORO_REQUIRED_FILES: tuple[str, ...] = (
     "config.json",
@@ -179,7 +176,7 @@ class KokoroProvider:
         # Kokoro samples at 24kHz. Write WAV first, then ffmpeg → mp3.
         wav_path = out_path.with_suffix(".wav")
         sf.write(str(wav_path), audio, 24000)
-        _wav_to_mp3(wav_path, out_path, self._settings)
+        wav_to_mp3(wav_path, out_path, self._settings)
 
         return TTSResult(
             path=out_path,
@@ -247,34 +244,3 @@ def _local_voice_path(voice: str) -> Path | None:
         return None
     path = snapshot / "voices" / f"{voice}.pt"
     return path if path.exists() else None
-
-
-def _wav_to_mp3(wav: Path, mp3: Path, settings) -> None:
-    """Transcode WAV to mono mp3 using ffmpeg, falling back to keeping WAV."""
-    if shutil.which("ffmpeg") is None:
-        logger.warning("ffmpeg not found; keeping WAV at %s (larger file size)", wav)
-        # Rename so the cache path still resolves; caller treats the
-        # resulting file as the audio asset regardless of extension.
-        try:
-            mp3.unlink(missing_ok=True)
-        except OSError:
-            pass
-        wav.replace(mp3)
-        return
-    bitrate = getattr(settings, "tts_bitrate", "96k")
-    sr = getattr(settings, "tts_sample_rate", 44100)
-    cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-i", str(wav),
-        "-ac", "1",
-        "-ar", str(sr),
-        "-b:a", bitrate,
-        str(mp3),
-    ]
-    try:
-        subprocess.run(cmd, check=True)
-    finally:
-        try:
-            wav.unlink()
-        except OSError:
-            pass

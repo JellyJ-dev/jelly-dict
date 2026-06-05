@@ -24,7 +24,9 @@ from app.core.models import (
     collect_examples_flat,
     sanitize_meaning_gloss,
 )
+from app.core.cache_policy import cache_entry_needs_refresh
 from app.dictionary.parser_utils import (
+    aggregate_relations,
     dedup_preserve_order,
     extract_number,
     first,
@@ -113,8 +115,8 @@ def parse_with_canonical(
         return None, canonical
 
     pos_top = [g.pos for g in meaning_groups if g.pos]
-    synonyms = _aggregate_relations(meaning_groups, "synonyms")
-    antonyms = _aggregate_relations(meaning_groups, "antonyms")
+    synonyms = aggregate_relations(meaning_groups, "synonyms")
+    antonyms = aggregate_relations(meaning_groups, "antonyms")
 
     entry = VocabularyEntry(
         language="en",
@@ -132,42 +134,11 @@ def parse_with_canonical(
     entry.meanings_summary = build_meanings_summary(entry)
     return entry, canonical
 
-
-def cache_entry_needs_refresh(entry: VocabularyEntry) -> bool:
-    if entry.source_provider != "naver_en":
-        return False
-    for group in entry.meaning_groups:
-        for sense in group.senses:
-            gloss = (sense.gloss or "").strip()
-            if not gloss:
-                continue
-            cleaned = _clean_meaning_gloss(gloss)
-            if not cleaned or cleaned != gloss:
-                return True
-    return False
-
-
 def _first_audio_url(soup, base_url: str) -> str | None:
     """Naver renders pronunciations through a JS TTS API rather than a
     static <audio src>. We do not synthesize the URL — return None and
     let the user trigger native playback through the source page."""
     return None
-
-
-def _aggregate_relations(meaning_groups: list[MeaningGroup], kind: str) -> list[str]:
-    """Roll up synonyms/antonyms from every SubSense into an entry-level list."""
-    out: list[str] = []
-    seen: set[str] = set()
-    for group in meaning_groups:
-        for sense in group.senses:
-            for sub in sense.sub_senses:
-                values = getattr(sub, kind, []) or []
-                for value in values:
-                    if value and value not in seen:
-                        seen.add(value)
-                        out.append(value)
-    return out
-
 
 def _parse_search_result_rows(
     soup, word: str

@@ -7,19 +7,14 @@ HTTP API at 127.0.0.1:50021. Generated voices require attribution
 from __future__ import annotations
 
 import json
-import logging
-import shutil
-import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 from app.anki.tts.base import ProviderInfo, TTSResult
+from app.anki.tts.transcode import wav_to_mp3
 from app.core.url_safety import require_loopback_http_url
-
-logger = logging.getLogger(__name__)
-
 
 # Curated default set. Only standard (`ノーマル`) styles, picking
 # personalities suitable for general listening — anything sexy/whisper/
@@ -181,7 +176,7 @@ class VoicevoxProvider:
 
         wav_path = out_path.with_suffix(".wav")
         wav_path.write_bytes(wav_bytes)
-        _wav_to_mp3(wav_path, out_path, self._settings)
+        wav_to_mp3(wav_path, out_path, self._settings)
 
         # Display name (after the colon) for credit text, falling back to id.
         display = voice.split(":", 1)[1].strip() if ":" in voice else voice
@@ -193,31 +188,3 @@ class VoicevoxProvider:
             credit_text=f"VOICEVOX:{display}",
             license_note="VOICEVOX 캐릭터별 이용규약",
         )
-
-
-def _wav_to_mp3(wav: Path, mp3: Path, settings) -> None:
-    if shutil.which("ffmpeg") is None:
-        logger.warning("ffmpeg not found; keeping WAV at %s", wav)
-        try:
-            mp3.unlink(missing_ok=True)
-        except OSError:
-            pass
-        wav.replace(mp3)
-        return
-    bitrate = getattr(settings, "tts_bitrate", "96k")
-    sr = getattr(settings, "tts_sample_rate", 44100)
-    cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-i", str(wav),
-        "-ac", "1",
-        "-ar", str(sr),
-        "-b:a", bitrate,
-        str(mp3),
-    ]
-    try:
-        subprocess.run(cmd, check=True)
-    finally:
-        try:
-            wav.unlink()
-        except OSError:
-            pass

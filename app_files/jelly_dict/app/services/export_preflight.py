@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from app.core.export_plan import ExportPlan
 from app.storage.settings_store import Settings
-from app.ui.export_options import ExportPlan
 
 Severity = Literal["block", "warn", "info"]
 

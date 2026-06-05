@@ -38,6 +38,7 @@ from app.core.models import (
     collect_examples_flat,
 )
 from app.dictionary.parser_utils import (
+    aggregate_relations,
     extract_number,
     first,
     make_soup,
@@ -125,7 +126,7 @@ def parse_with_canonical(
         pronunciation_audio_url=None,
         part_of_speech=[pos] if pos else [],
         meaning_groups=meaning_groups,
-        synonyms=_collect_related(meaning_groups),
+        synonyms=aggregate_relations(meaning_groups, "synonyms"),
         antonyms=[],
         source_url=source_url,
         source_provider="naver_ja",
@@ -259,24 +260,3 @@ def _parse_examples(soup) -> list[Example]:
             )
         )
     return items
-
-
-def _collect_related(meaning_groups: list[MeaningGroup]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for group in meaning_groups:
-        for sense in group.senses:
-            for sub in sense.sub_senses:
-                for value in sub.synonyms:
-                    if value and value not in seen:
-                        seen.add(value)
-                        out.append(value)
-    return out
-
-
-def extract_number(node) -> int:
-    if node is None:
-        return 0
-    text = node.get_text(" ", strip=True)
-    match = re.search(r"\d+", text)
-    return int(match.group()) if match else 0

@@ -2,19 +2,15 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
-from datetime import datetime, timezone
 from pathlib import Path
 
+from app.core.cache_policy import cache_entry_needs_refresh
 from app.core.errors import CacheError
 from app.core.models import Language, VocabularyEntry, normalize_word_key
+from app.core.utils import utc_now_str
 from app.storage.sqlite_store import open_db
 
 log = logging.getLogger(__name__)
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
 
 class CacheStore:
     def __init__(self, db_path: Path | None = None) -> None:
@@ -58,8 +54,8 @@ class CacheStore:
                         entry.word,
                         entry.to_json(),
                         entry.source_url,
-                        _now(),
-                        _now(),
+                        utc_now_str(),
+                        utc_now_str(),
                     ),
                 )
         except Exception as exc:
@@ -185,7 +181,7 @@ class CacheStore:
                         value = excluded.value,
                         updated_at = excluded.updated_at
                     """,
-                    (key, value, _now()),
+                    (key, value, utc_now_str()),
                 )
         except Exception as exc:
             log.warning("cache state set failed: %s", exc)
@@ -219,7 +215,7 @@ class CacheStore:
                 conn.execute(
                     "INSERT INTO recent_lookups(language, word, entry_word, looked_up_at) "
                     "VALUES(?, ?, ?, ?)",
-                    (language, word, entry_word, _now()),
+                    (language, word, entry_word, utc_now_str()),
                 )
         except Exception as exc:
             log.warning("recent_lookups insert failed: %s", exc)
@@ -337,10 +333,4 @@ def _entry_from_cache_json(payload: str) -> VocabularyEntry | None:
 
 
 def _entry_needs_parser_refresh(entry: VocabularyEntry) -> bool:
-    if entry.source_provider != "naver_en":
-        return False
-    try:
-        from app.dictionary.naver_english import cache_entry_needs_refresh
-    except Exception:
-        return False
     return cache_entry_needs_refresh(entry)

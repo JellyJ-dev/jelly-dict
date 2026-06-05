@@ -1,10 +1,10 @@
 """TSV export for Anki import."""
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Iterable
 
+from app.anki.temp_utils import new_temp_path
 from app.anki.render import FIELD_ORDER, fields_for_entry
 from app.core.errors import ExportError
 from app.core.models import VocabularyEntry
@@ -27,7 +27,7 @@ def export_tsv(path: Path, entries: Iterable[VocabularyEntry]) -> int:
         count += 1
 
     try:
-        temp_path = _new_temp_path(path)
+        temp_path = new_temp_path(path)
         try:
             with temp_path.open("w", encoding="utf-8-sig", newline="\n") as f:
                 f.write("\n".join(rows))
@@ -46,13 +46,3 @@ def _clean(value: str) -> str:
 
 def _clean_tag(tag: str) -> str:
     return tag.strip().replace(" ", "_")
-
-
-def _new_temp_path(path: Path) -> Path:
-    with tempfile.NamedTemporaryFile(
-        delete=False,
-        dir=path.parent,
-        prefix=f".{path.stem}.",
-        suffix=path.suffix,
-    ) as temp_file:
-        return Path(temp_file.name)

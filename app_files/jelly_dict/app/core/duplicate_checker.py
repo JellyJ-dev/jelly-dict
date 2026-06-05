@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Literal
 
 from app.core.models import (
@@ -11,6 +10,7 @@ from app.core.models import (
     build_meanings_summary,
     collect_examples_flat,
 )
+from app.core.utils import utc_now_str
 
 DuplicatePolicy = Literal[
     "keep_existing",
@@ -49,13 +49,13 @@ def apply_policy(
     if policy == "update_existing":
         candidate.id = existing.id or candidate.id
         candidate.created_at = existing.created_at or candidate.created_at
-        candidate.updated_at = _now()
+        candidate.updated_at = utc_now_str()
         return candidate
     if policy == "merge_examples_and_memo":
         return _merge(existing, candidate)
     if policy == "add_as_new":
         # Caller should append without dedup. Touch timestamps to current.
-        candidate.updated_at = _now()
+        candidate.updated_at = utc_now_str()
         return candidate
     raise ValueError(f"unknown policy: {policy}")
 
@@ -101,7 +101,7 @@ def _merge(existing: VocabularyEntry, candidate: VocabularyEntry) -> VocabularyE
     merged.meanings_summary = (
         merged.meanings_summary or build_meanings_summary(merged)
     )
-    merged.updated_at = _now()
+    merged.updated_at = utc_now_str()
     return merged
 
 
@@ -113,7 +113,3 @@ def _union(left: list[str], right: list[str]) -> list[str]:
             result.append(item)
             seen.add(item)
     return result
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")

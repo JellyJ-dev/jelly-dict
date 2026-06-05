@@ -5,6 +5,8 @@ manipulation — that lives in `excel_writer.py` and `excel_reader.py`.
 """
 from __future__ import annotations
 
+import re
+from copy import deepcopy
 from typing import Iterable
 
 from openpyxl.styles import Font, PatternFill
@@ -12,6 +14,8 @@ from openpyxl.styles import Font, PatternFill
 from app.core.models import (
     Example,
     MeaningGroup,
+    Sense,
+    SubSense,
     VocabularyEntry,
     build_meanings_summary,
     collect_examples_flat,
@@ -156,33 +160,155 @@ def row_to_entry(keys: list[str], row: tuple) -> VocabularyEntry:
         else:
             data[key] = str(value)
 
-    sources = [s for s in data.get("examples", "").split("\n") if s.strip()]
-    translations = [s for s in data.get("example_translations", "").split("\n")]
+    return row_data_to_entry(data)
+
+
+def row_data_to_entry(
+    data: dict,
+    *,
+    parse_meanings_detail: bool = False,
+    preserve_blank_translations: bool = False,
+) -> VocabularyEntry:
+    word = str(data.get("word", "")).strip()
+    language = str(data.get("language", "en")).strip() or "en"
+    sources = [s for s in str(data.get("examples", "") or "").split("\n") if s.strip()]
+    translations = str(data.get("example_translations", "") or "").split("\n")
     examples_flat: list[Example] = []
     for idx, src in enumerate(sources):
+        translation = translations[idx] if idx < len(translations) else None
+        if translation is not None and not preserve_blank_translations:
+            translation = translation.strip() or None
         examples_flat.append(
             Example(
                 source_text=src,
                 source_text_plain=src,
-                translation_ko=(translations[idx].strip() or None)
-                if idx < len(translations)
-                else None,
+                translation_ko=translation,
                 order=idx,
             )
         )
 
+    pos_list = _split_csv(data.get("part_of_speech", ""))
+    summary = str(data.get("meanings_summary", "") or "")
+    meaning_groups: list[MeaningGroup] = []
+    if parse_meanings_detail:
+        detail = str(data.get("meanings_detail", "") or "")
+        meaning_groups = parse_meanings_detail_cell(detail)
+        if meaning_groups:
+            if examples_flat:
+                replace_nested_examples(meaning_groups, examples_flat)
+        elif pos_list and summary:
+            meaning_groups = [
+                MeaningGroup(
+                    pos=pos_list[0],
+                    senses=[
+                        Sense(
+                            number=1,
+                            gloss=summary,
+                            sub_senses=[SubSense(examples=examples_flat)],
+                        )
+                    ],
+                )
+            ]
+
     return VocabularyEntry(
-        language=data.get("language", "en"),  # type: ignore[arg-type]
-        word=data.get("word", ""),
-        reading=data.get("reading") or None,
-        part_of_speech=[s for s in (data.get("part_of_speech", "").split(",")) if s.strip()],
-        meanings_summary=data.get("meanings_summary", ""),
+        language=language,  # type: ignore[arg-type]
+        word=word,
+        reading=str(data.get("reading", "") or "") or None,
+        part_of_speech=pos_list,
+        meaning_groups=meaning_groups,
+        meanings_summary=summary,
         examples_flat=examples_flat,
-        memo=data.get("memo", ""),
-        synonyms=[s.strip() for s in data.get("synonyms", "").split(",") if s.strip()],
-        antonyms=[s.strip() for s in data.get("antonyms", "").split(",") if s.strip()],
-        tags=[s.strip() for s in data.get("tags", "").split(",") if s.strip()],
-        source_url=data.get("source_url") or None,
-        created_at=data.get("created_at") or "",
-        updated_at=data.get("updated_at") or "",
+        memo=str(data.get("memo", "") or ""),
+        synonyms=_split_csv(data.get("synonyms", "")),
+        antonyms=_split_csv(data.get("antonyms", "")),
+        tags=_split_csv(data.get("tags", "")),
+        source_url=str(data.get("source_url", "") or "") or None,
+        source_provider="unknown",
+        created_at=str(data.get("created_at", "") or ""),
+        updated_at=str(data.get("updated_at", "") or ""),
     )
+
+
+def _split_csv(value) -> list[str]:
+    if not value:
+        return []
+    return [p.strip() for p in str(value).split(",") if p.strip()]
+
+
+def parse_meanings_detail_cell(value: str) -> list[MeaningGroup]:
+    """Parse the plain-text detail format written to Excel back into groups."""
+    groups: list[MeaningGroup] = []
+    current_group: MeaningGroup | None = None
+    current_sense: Sense | None = None
+    current_sub: SubSense | None = None
+
+    for raw_line in (value or "").splitlines():
+        if not raw_line.strip():
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        text = raw_line.strip()
+
+        if indent == 0:
+            current_group = MeaningGroup(pos=text, senses=[])
+            groups.append(current_group)
+            current_sense = None
+            current_sub = None
+            continue
+
+        if current_group is None:
+            current_group = MeaningGroup(pos="", senses=[])
+            groups.append(current_group)
+
+        if text.startswith("="):
+            if current_sub is not None:
+                current_sub.synonyms.extend(_split_csv(text[1:]))
+            continue
+
+        if indent <= 2:
+            number, gloss = _parse_numbered_detail_line(text)
+            current_sense = Sense(number=number, gloss=gloss, sub_senses=[])
+            current_group.senses.append(current_sense)
+            current_sub = None
+            continue
+
+        label, gloss = _parse_labeled_detail_line(text)
+        current_sub = SubSense(label=label, gloss=gloss)
+        if current_sense is None:
+            current_sense = Sense(number=0, gloss="", sub_senses=[])
+            current_group.senses.append(current_sense)
+        current_sense.sub_senses.append(current_sub)
+
+    return [group for group in groups if group.pos or group.senses]
+
+
+def _parse_numbered_detail_line(text: str) -> tuple[int, str]:
+    match = re.match(r"(?:(\d+)\.|[-*])\s*(.*)", text)
+    if not match:
+        return 0, text
+    number = int(match.group(1) or 0)
+    return number, match.group(2).strip()
+
+
+def _parse_labeled_detail_line(text: str) -> tuple[str, str]:
+    match = re.match(r"(?:(?P<label>[^.\s]+)\.|[-*])\s*(?P<gloss>.*)", text)
+    if not match:
+        return "", text
+    return (match.group("label") or "").strip(), match.group("gloss").strip()
+
+
+def replace_nested_examples(
+    groups: list[MeaningGroup],
+    examples: list[Example],
+) -> None:
+    attached = False
+    for group in groups:
+        for sense in group.senses:
+            for sub in sense.sub_senses:
+                if not attached:
+                    sub.examples = deepcopy(examples)
+                    attached = True
+                else:
+                    sub.examples = []
+    if attached or not groups or not groups[0].senses:
+        return
+    groups[0].senses[0].sub_senses.append(SubSense(examples=deepcopy(examples)))

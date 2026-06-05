@@ -7,6 +7,8 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from app.core.models import MeaningGroup
+
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -113,6 +115,21 @@ def dedup_preserve_order(values) -> list[str]:
         if value and value not in seen:
             seen.add(value)
             out.append(value)
+    return out
+
+
+def aggregate_relations(meaning_groups: list[MeaningGroup], kind: str) -> list[str]:
+    """Roll up relation values from every SubSense into an entry-level list."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for group in meaning_groups:
+        for sense in group.senses:
+            for sub in sense.sub_senses:
+                values = getattr(sub, kind, []) or []
+                for value in values:
+                    if value and value not in seen:
+                        seen.add(value)
+                        out.append(value)
     return out
 
 

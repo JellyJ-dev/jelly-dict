@@ -14,10 +14,10 @@ the card templates via ``WordAudio`` / ``ExampleAudios`` fields.
 from __future__ import annotations
 
 import hashlib
-import tempfile
 from pathlib import Path
 from typing import Iterable
 
+from app.anki.temp_utils import new_temp_path
 from app.anki.render import FIELD_ORDER, fields_for_entry, load_template
 from app.core.errors import ExportError
 from app.core.models import Language, VocabularyEntry, normalize_word_key
@@ -115,7 +115,7 @@ def export_apkg(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        temp_path = _new_temp_path(path)
+        temp_path = new_temp_path(path)
         try:
             package.write_to_file(str(temp_path))
             temp_path.replace(path)
@@ -153,13 +153,3 @@ def _note_guid(language: Language, word: str) -> str:
 def _deck_id(deck_name: str) -> int:
     digest = hashlib.sha1(deck_name.encode("utf-8")).digest()
     return DECK_ID_DEFAULT ^ int.from_bytes(digest[:4], "big")
-
-
-def _new_temp_path(path: Path) -> Path:
-    with tempfile.NamedTemporaryFile(
-        delete=False,
-        dir=path.parent,
-        prefix=f".{path.stem}.",
-        suffix=path.suffix,
-    ) as temp_file:
-        return Path(temp_file.name)

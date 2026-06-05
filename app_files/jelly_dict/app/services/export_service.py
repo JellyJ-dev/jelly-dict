@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from copy import deepcopy
 from pathlib import Path
 
@@ -10,15 +9,16 @@ from openpyxl import load_workbook
 
 from app.anki import apkg_exporter, tsv_exporter
 from app.core.models import (
-    Example,
-    MeaningGroup,
-    Sense,
-    SubSense,
     VocabularyEntry,
     build_meanings_summary,
 )
 from app.storage import cache_store
-from app.storage.excel_serializer import SHEET_NAME, label_to_key
+from app.storage.excel_serializer import (
+    SHEET_NAME,
+    label_to_key,
+    replace_nested_examples,
+    row_data_to_entry,
+)
 from app.storage.settings_store import Settings
 
 log = logging.getLogger(__name__)
@@ -97,59 +97,11 @@ class ExportService:
         return entry_from_export_row(data, cached)
 
 
-def _split_csv(value) -> list[str]:
-    if not value:
-        return []
-    return [p.strip() for p in str(value).split(",") if p.strip()]
-
-
 def _entry_from_flat_row(data: dict) -> VocabularyEntry:
-    word = str(data.get("word", "")).strip()
-    language = str(data.get("language", "en")).strip() or "en"
-    sources = [s for s in str(data.get("examples", "") or "").split("\n") if s]
-    translations = str(data.get("example_translations", "") or "").split("\n")
-    examples = []
-    for idx, src in enumerate(sources):
-        examples.append(
-            Example(
-                source_text=src,
-                source_text_plain=src,
-                translation_ko=translations[idx] if idx < len(translations) else None,
-                order=idx,
-            )
-        )
-
-    pos_list = _split_csv(data.get("part_of_speech", ""))
-    summary = str(data.get("meanings_summary", "") or "")
-    detail = str(data.get("meanings_detail", "") or "")
-    meaning_groups = _parse_meanings_detail(detail)
-    if meaning_groups:
-        if examples:
-            _replace_nested_examples(meaning_groups, examples)
-    elif pos_list and summary:
-        meaning_groups = [
-            MeaningGroup(
-                pos=pos_list[0],
-                senses=[Sense(number=1, gloss=summary, sub_senses=[SubSense(examples=examples)])],
-            )
-        ]
-
-    entry = VocabularyEntry(
-        language=language,  # type: ignore[arg-type]
-        word=word,
-        reading=str(data.get("reading", "") or "") or None,
-        part_of_speech=pos_list,
-        meaning_groups=meaning_groups,
-        meanings_summary=summary,
-        examples_flat=examples,
-        synonyms=_split_csv(data.get("synonyms", "")),
-        antonyms=_split_csv(data.get("antonyms", "")),
-        tags=_split_csv(data.get("tags", "")),
-        memo=str(data.get("memo", "") or ""),
-        source_url=str(data.get("source_url", "") or "") or None,
-        source_provider="unknown",
-        created_at=str(data.get("created_at", "") or ""),
-        updated_at=str(data.get("updated_at", "") or ""),
+    entry = row_data_to_entry(
+        data,
+        parse_meanings_detail=True,
+        preserve_blank_translations=True,
     )
     if not entry.meanings_summary:
         entry.meanings_summary = build_meanings_summary(entry)
@@ -181,7 +133,7 @@ def entry_from_export_row(
     ):
         base.meaning_groups = deepcopy(cached.meaning_groups)
         if base.examples_flat:
-            _replace_nested_examples(base.meaning_groups, base.examples_flat)
+            replace_nested_examples(base.meaning_groups, base.examples_flat)
         if not base.meanings_summary:
             base.meanings_summary = cached_summary
 
@@ -195,82 +147,3 @@ def entry_from_export_row(
 
     base.source_provider = "excel"
     return base
-
-
-def _parse_meanings_detail(value: str) -> list[MeaningGroup]:
-    """Parse the plain-text detail format written to Excel back into groups."""
-    groups: list[MeaningGroup] = []
-    current_group: MeaningGroup | None = None
-    current_sense: Sense | None = None
-    current_sub: SubSense | None = None
-
-    for raw_line in (value or "").splitlines():
-        if not raw_line.strip():
-            continue
-        indent = len(raw_line) - len(raw_line.lstrip(" "))
-        text = raw_line.strip()
-
-        if indent == 0:
-            current_group = MeaningGroup(pos=text, senses=[])
-            groups.append(current_group)
-            current_sense = None
-            current_sub = None
-            continue
-
-        if current_group is None:
-            current_group = MeaningGroup(pos="", senses=[])
-            groups.append(current_group)
-
-        if text.startswith("="):
-            if current_sub is not None:
-                current_sub.synonyms.extend(_split_csv(text[1:]))
-            continue
-
-        if indent <= 2:
-            number, gloss = _parse_numbered_detail_line(text)
-            current_sense = Sense(number=number, gloss=gloss, sub_senses=[])
-            current_group.senses.append(current_sense)
-            current_sub = None
-            continue
-
-        label, gloss = _parse_labeled_detail_line(text)
-        current_sub = SubSense(label=label, gloss=gloss)
-        if current_sense is None:
-            current_sense = Sense(number=0, gloss="", sub_senses=[])
-            current_group.senses.append(current_sense)
-        current_sense.sub_senses.append(current_sub)
-
-    return [group for group in groups if group.pos or group.senses]
-
-
-def _parse_numbered_detail_line(text: str) -> tuple[int, str]:
-    match = re.match(r"(?:(\d+)\.|[-*])\s*(.*)", text)
-    if not match:
-        return 0, text
-    number = int(match.group(1) or 0)
-    return number, match.group(2).strip()
-
-
-def _parse_labeled_detail_line(text: str) -> tuple[str, str]:
-    match = re.match(r"(?:(?P<label>[^.\s]+)\.|[-*])\s*(?P<gloss>.*)", text)
-    if not match:
-        return "", text
-    return (match.group("label") or "").strip(), match.group("gloss").strip()
-
-
-def _replace_nested_examples(
-    groups: list[MeaningGroup],
-    examples: list[Example],
-) -> None:
-    attached = False
-    for group in groups:
-        for sense in group.senses:
-            for sub in sense.sub_senses:
-                if not attached:
-                    sub.examples = deepcopy(examples)
-                    attached = True
-                else:
-                    sub.examples = []
-    if attached or not groups or not groups[0].senses:
-        return
-    groups[0].senses[0].sub_senses.append(SubSense(examples=deepcopy(examples)))

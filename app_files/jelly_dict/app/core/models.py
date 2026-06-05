@@ -5,8 +5,9 @@ import re
 import unicodedata
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Literal
+
+from app.core.utils import utc_now_str
 
 Language = Literal["en", "ja"]
 SourceProvider = Literal["naver_en", "naver_ja", "manual", "naver_api", "unknown"]
@@ -27,10 +28,6 @@ _EN_GLOSS_STOPWORDS = {
     "주로",
     "특히",
 }
-
-
-def _now_utc() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _new_id() -> str:
@@ -84,8 +81,8 @@ class VocabularyEntry:
     source_url: str | None = None
     source_provider: SourceProvider = "unknown"
     id: str = field(default_factory=_new_id)
-    created_at: str = field(default_factory=_now_utc)
-    updated_at: str = field(default_factory=_now_utc)
+    created_at: str = field(default_factory=utc_now_str)
+    updated_at: str = field(default_factory=utc_now_str)
 
     def word_key(self) -> str:
         return normalize_word_key(self.word, self.language)
@@ -138,8 +135,8 @@ class VocabularyEntry:
             source_url=data.get("source_url"),
             source_provider=data.get("source_provider", "unknown"),
             id=data.get("id", _new_id()),
-            created_at=data.get("created_at", _now_utc()),
-            updated_at=data.get("updated_at", _now_utc()),
+            created_at=data.get("created_at", utc_now_str()),
+            updated_at=data.get("updated_at", utc_now_str()),
         )
 
     @classmethod
@@ -147,7 +144,7 @@ class VocabularyEntry:
         return cls.from_dict(json.loads(payload))
 
     def touch(self) -> None:
-        self.updated_at = _now_utc()
+        self.updated_at = utc_now_str()
 
 
 def normalize_word_key(word: str, language: Language) -> str:
@@ -204,8 +201,6 @@ def first_meaning_hint(entry: VocabularyEntry, limit: int = 40) -> str:
     list views (recent words, wordbook rows). Falls back to the entry's
     `meanings_summary` after stripping the POS prefix and any leading
     sense numbering. Pure function, no side effects."""
-    import re
-
     for group in entry.meaning_groups:
         for sense in group.senses:
             if sense.gloss:
