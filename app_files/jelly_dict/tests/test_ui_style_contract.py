@@ -10,6 +10,7 @@ WORDBOOK_ROW = (
     Path(__file__).resolve().parents[1] / "app" / "ui" / "widgets" / "wordbook_row.py"
 )
 MAIN_WINDOW = Path(__file__).resolve().parents[1] / "app" / "ui" / "main_window.py"
+MAIN_WINDOW_UI = Path(__file__).resolve().parents[1] / "app" / "ui" / "main_window_ui.py"
 
 
 def _qss_block(qss: str, selector: str) -> str:
@@ -119,7 +120,11 @@ def test_wordbook_row_actions_are_edit_delete_only_contract():
 
 
 def test_main_menu_avoids_native_edit_menu_injections():
-    source = MAIN_WINDOW.read_text(encoding="utf-8")
+    source = (
+        MAIN_WINDOW.read_text(encoding="utf-8")
+        + "\n"
+        + MAIN_WINDOW_UI.read_text(encoding="utf-8")
+    )
 
     assert 'menu.addMenu("도구")' in source
     assert 'menu.addMenu("편집")' not in source

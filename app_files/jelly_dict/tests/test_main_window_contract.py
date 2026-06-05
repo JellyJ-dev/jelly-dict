@@ -14,6 +14,21 @@ from app.ui.main_window import (
 
 
 MAIN_WINDOW = Path(__file__).resolve().parents[1] / "app" / "ui" / "main_window.py"
+MAIN_WINDOW_UI = Path(__file__).resolve().parents[1] / "app" / "ui" / "main_window_ui.py"
+RECENT_CONTROLLER = (
+    Path(__file__).resolve().parents[1]
+    / "app"
+    / "ui"
+    / "controllers"
+    / "recent_controller.py"
+)
+WINDOW_STATE_CONTROLLER = (
+    Path(__file__).resolve().parents[1]
+    / "app"
+    / "ui"
+    / "controllers"
+    / "window_state_controller.py"
+)
 
 
 def test_runtime_status_summary_balances_language_paths():
@@ -34,37 +49,39 @@ def test_runtime_status_summary_balances_language_paths():
 
 def test_main_window_hides_native_macos_titlebar_chrome():
     source = MAIN_WINDOW.read_text(encoding="utf-8")
+    window_state_source = WINDOW_STATE_CONTROLLER.read_text(encoding="utf-8")
+    combined_source = source + "\n" + window_state_source
 
     assert 'self.setWindowTitle("")' in source
-    assert "setTitleVisibility_" in source
-    assert "NSWindowTitleHidden" in source
+    assert "setTitleVisibility_" in combined_source
+    assert "NSWindowTitleHidden" in combined_source
     assert "ExpandedClientAreaHint" in source
     assert "NoTitleBarBackgroundHint" in source
-    assert "setTitlebarAppearsTransparent_(True)" in source
-    assert "setTitlebarSeparatorStyle_(NSTitlebarSeparatorStyleNone)" in source
-    assert "NSWindowStyleMaskFullSizeContentView" in source
-    assert "setAutorecalculatesContentBorderThickness_forEdge_" in source
-    assert "setContentBorderThickness_forEdge_(0, NSMaxYEdge)" in source
-    assert "PlatformSurface" in source
-    assert "MACOS_TITLEBAR_DOUBLE_CLICK_HEIGHT = 52" in source
-    assert "performZoom_" in source
-    assert "MouseButtonDblClick" in source
-    assert "globalPosition()" in source
-    assert "_titlebar_drag_origin" in source
-    assert "MouseMove" in source
-    assert "startSystemMove()" in source
-    assert "frameGeometry().topLeft()" in source
-    assert "_titlebar_zoom_restore_geometry" in source
-    assert "_restore_titlebar_zoom_geometry()" in source
-    assert "QtCore.QRect(self.geometry())" in source
-    assert "setGeometry(restore_geometry)" in source
+    assert "setTitlebarAppearsTransparent_(True)" in combined_source
+    assert "setTitlebarSeparatorStyle_(NSTitlebarSeparatorStyleNone)" in combined_source
+    assert "NSWindowStyleMaskFullSizeContentView" in combined_source
+    assert "setAutorecalculatesContentBorderThickness_forEdge_" in combined_source
+    assert "setContentBorderThickness_forEdge_(0, NSMaxYEdge)" in combined_source
+    assert "PlatformSurface" in combined_source
+    assert "MACOS_TITLEBAR_DOUBLE_CLICK_HEIGHT = 52" in combined_source
+    assert "performZoom_" in combined_source
+    assert "MouseButtonDblClick" in combined_source
+    assert "globalPosition()" in combined_source
+    assert "_titlebar_drag_origin" in combined_source
+    assert "MouseMove" in combined_source
+    assert "startSystemMove()" in combined_source
+    assert "frameGeometry().topLeft()" in combined_source
+    assert "_titlebar_zoom_restore_geometry" in combined_source
+    assert "_restore_titlebar_zoom_geometry()" in combined_source
+    assert "QtCore.QRect(" in combined_source
+    assert "setGeometry(restore_geometry)" in combined_source
     assert "removeEventFilter(self)" in source
-    assert "NSToolbar" not in source
-    assert "setUnifiedTitleAndToolBarOnMac" not in source
+    assert "NSToolbar" not in combined_source
+    assert "setUnifiedTitleAndToolBarOnMac" not in combined_source
 
 
 def test_recent_clear_uses_undo_toast_contract():
-    source = MAIN_WINDOW.read_text(encoding="utf-8")
+    source = RECENT_CONTROLLER.read_text(encoding="utf-8")
 
     assert "snapshot_recent_lookups()" in source
     assert "restore_recent_lookups(snapshot)" in source
@@ -74,16 +91,19 @@ def test_recent_clear_uses_undo_toast_contract():
 
 def test_main_window_close_shortcut_hides_app_and_can_restore():
     source = MAIN_WINDOW.read_text(encoding="utf-8")
+    ui_source = MAIN_WINDOW_UI.read_text(encoding="utf-8")
+    window_state_source = WINDOW_STATE_CONTROLLER.read_text(encoding="utf-8")
+    combined_source = source + "\n" + ui_source + "\n" + window_state_source
 
-    assert "QKeySequence.StandardKey.Close" in source
-    assert "self.close_shortcut.activated.connect(self._hide_main_window)" in source
-    assert "_main_window_hidden_by_shortcut" in source
-    assert "NSApp.hide_(None)" in source
-    assert "NSApp.unhide_(None)" in source
+    assert "QKeySequence.StandardKey.Close" in combined_source
+    assert "close_shortcut.activated.connect(window._hide_main_window)" in combined_source
+    assert "_main_window_hidden_by_shortcut" in combined_source
+    assert "NSApp.hide_(None)" in combined_source
+    assert "NSApp.unhide_(None)" in combined_source
     assert "_restore_hidden_main_window" in source
-    assert "needs_restore = (" in source
-    assert "if not needs_restore:" in source
-    assert "ApplicationActivate" in source
+    assert "needs_restore = (" in combined_source
+    assert "if not needs_restore:" in combined_source
+    assert "ApplicationActivate" in combined_source
     assert "applicationStateChanged.connect(self._on_application_state_changed)" in source
     assert "self.close_shortcut.activated.connect(self.hide)" not in source
     assert "self.close_shortcut.activated.connect(self.showMinimized)" not in source

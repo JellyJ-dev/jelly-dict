@@ -38,5 +38,7 @@ def test_all_app_dialogs_install_standard_close_shortcut():
 
     for filename, expected_count in expected.items():
         source = (UI_DIR / filename).read_text(encoding="utf-8")
+        if filename == "settings_view.py":
+            source += "\n" + (UI_DIR / "settings_widgets.py").read_text(encoding="utf-8")
 
         assert source.count("install_standard_close_shortcut(self)") >= expected_count
