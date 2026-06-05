@@ -36,18 +36,6 @@ base_python_command() {
   jelly_select_base_python "${PYTHON_COMMAND_FILE}"
 }
 
-python_is_supported() {
-  jelly_python_is_supported "$1"
-}
-
-python_version_text() {
-  jelly_python_version_text "$1"
-}
-
-prepare_qt_runtime_env() {
-  jelly_prepare_qt_runtime_env "$1"
-}
-
 quickstart_state_ok() {
   [[ -f "${SETUP_STATE_FILE}" ]] || return 1
 
@@ -67,10 +55,6 @@ quickstart_state_ok() {
   [[ "${ok}" == "1" && "${app_dir}" == "${APP_DIR}" ]]
 }
 
-venv_matches_current_location() {
-  jelly_venv_matches_current_location "${VENV_DIR}"
-}
-
 if ! quickstart_state_ok; then
   echo "jelly dict initial setup is not complete for this folder." >&2
   echo "Run first:" >&2
@@ -86,14 +70,14 @@ if [[ "${INSTALL_MODE}" == "venv" ]]; then
     exit 1
   fi
 
-  if ! venv_matches_current_location; then
+  if ! jelly_venv_matches_current_location "${VENV_DIR}"; then
     echo "Virtual environment was created for a different folder." >&2
     echo "Run Install jelly dict.command and allow dependency installation to recreate it." >&2
     echo "  ${REPO_ROOT}/scripts/quickstart.sh" >&2
     exit 1
   fi
 
-  if ! python_is_supported "${VENV_DIR}/bin/python"; then
+  if ! jelly_python_is_supported "${VENV_DIR}/bin/python"; then
     echo "Virtual environment Python is not supported: $("${VENV_DIR}/bin/python" -V 2>&1)" >&2
     echo "Jelly Dict.app currently uses Python 3.12 or 3.11 on macOS." >&2
     echo "Run Install jelly dict.command to recreate the environment." >&2
@@ -106,7 +90,7 @@ cd "${APP_DIR}"
 if [[ "${INSTALL_MODE}" == "venv" ]]; then
   # shellcheck source=/dev/null
   source "${VENV_DIR}/bin/activate"
-  prepare_qt_runtime_env python || true
+  jelly_prepare_qt_runtime_env python || true
   if [[ "${DETACH}" -eq 1 ]]; then
     mkdir -p "${APP_DIR}/.jelly_dict/logs"
     nohup python -m app.main >> "${APP_DIR}/.jelly_dict/logs/launcher.log" 2>&1 &
@@ -121,7 +105,7 @@ if [[ "${DETACH}" -eq 1 ]]; then
     echo "Python 3.12 or 3.11 not found. Run Install jelly dict.command." >&2
     exit 1
   fi
-  prepare_qt_runtime_env "${base_python}" || true
+  jelly_prepare_qt_runtime_env "${base_python}" || true
   nohup "${base_python}" -m app.main >> "${APP_DIR}/.jelly_dict/logs/launcher.log" 2>&1 &
   exit 0
 fi
@@ -130,5 +114,5 @@ if ! base_python="$(base_python_command)"; then
   echo "Python 3.12 or 3.11 not found. Run Install jelly dict.command." >&2
   exit 1
 fi
-prepare_qt_runtime_env "${base_python}" || true
+jelly_prepare_qt_runtime_env "${base_python}" || true
 exec "${base_python}" -m app.main

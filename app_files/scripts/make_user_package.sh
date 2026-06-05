@@ -71,14 +71,14 @@ rsync -a \
   --exclude "__pycache__/" \
   "${APP_FILES_ROOT}/scripts/" "${APP_FILES}/scripts/"
 
-for doc in LICENSE THIRD_PARTY_NOTICES.md; do
+for doc in LICENSE LICENSE_NOTICE.txt THIRD_PARTY_NOTICES.md; do
   if [[ -f "${APP_FILES_ROOT}/${doc}" ]]; then
     cp "${APP_FILES_ROOT}/${doc}" "${APP_FILES}/"
   fi
 done
 
 chmod +x "${OUT_DIR}/Install jelly dict.command" "${OUT_DIR}/Update jelly dict.command" "${OUT_DIR}/Run jelly dict.command"
-chmod +x "${APP_FILES}/scripts/quickstart.sh" "${APP_FILES}/scripts/run.sh"
+chmod +x "${APP_FILES}/scripts/install_app.sh" "${APP_FILES}/scripts/quickstart.sh" "${APP_FILES}/scripts/run.sh"
 chmod +x "${APP_FILES}/packaging/macos/build_app.sh" "${APP_FILES}/packaging/macos/make_icns.sh" 2>/dev/null || true
 
 echo "Created: ${OUT_DIR}"

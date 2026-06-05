@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from app.core.models import Example, MeaningGroup, Sense, SubSense, VocabularyEntry
 from app.storage.cache_store import CacheStore
 from app.storage.settings_store import Settings

@@ -8,6 +8,7 @@ REPO_ROOT="${JELLY_APP_FILES_ROOT}"
 PUBLIC_ROOT="${JELLY_PUBLIC_ROOT}"
 APP_DIR="${JELLY_APP_DIR}"
 VENV_DIR="${JELLY_VENV_DIR}"
+LICENSE_NOTICE_FILE="${PUBLIC_ROOT}/app_files/LICENSE_NOTICE.txt"
 INSTALL_MODE_FILE="${APP_DIR}/.install_mode"
 PYTHON_COMMAND_FILE="${APP_DIR}/.python_cmd"
 SETUP_STATE_FILE="${APP_DIR}/.quickstart_ok"
@@ -236,6 +237,8 @@ verify_public_layout() {
     "${PUBLIC_ROOT}/Run jelly dict.command" \
     "${PUBLIC_ROOT}/README.md" \
     "${PUBLIC_ROOT}/app_files" \
+    "${PUBLIC_ROOT}/app_files/LICENSE_NOTICE.txt" \
+    "${REPO_ROOT}/scripts/install_app.sh" \
     "${REPO_ROOT}/scripts/quickstart.sh" \
     "${REPO_ROOT}/scripts/run.sh" \
     "${APP_DIR}/app/main.py" \
@@ -250,6 +253,7 @@ verify_public_layout() {
     "${PUBLIC_ROOT}/Install jelly dict.command" \
     "${PUBLIC_ROOT}/Update jelly dict.command" \
     "${PUBLIC_ROOT}/Run jelly dict.command" \
+    "${REPO_ROOT}/scripts/install_app.sh" \
     "${REPO_ROOT}/scripts/quickstart.sh" \
     "${REPO_ROOT}/scripts/run.sh"; do
     if [[ -e "${path}" && ! -x "${path}" ]]; then
@@ -272,10 +276,6 @@ verify_public_layout() {
   return "${failed}"
 }
 
-venv_matches_current_location() {
-  jelly_venv_matches_current_location "${VENV_DIR}"
-}
-
 python_command() {
   if [[ "${INSTALL_MODE}" == "venv" ]]; then
     printf 'python\n'
@@ -284,31 +284,15 @@ python_command() {
   fi
 }
 
-candidate_python_commands() {
-  jelly_candidate_python_commands
-}
-
-python_is_supported() {
-  jelly_python_is_supported "$1"
-}
-
-python_version_text() {
-  jelly_python_version_text "$1"
-}
-
 venv_python_is_supported() {
   [[ -x "${VENV_DIR}/bin/python" ]] || return 1
-  python_is_supported "${VENV_DIR}/bin/python"
+  jelly_python_is_supported "${VENV_DIR}/bin/python"
 }
 
 base_python_command() {
   local command
-  command="$(select_base_python)"
+  command="$(jelly_select_base_python "${PYTHON_COMMAND_FILE}")"
   printf '%s\n' "${command}"
-}
-
-select_base_python() {
-  jelly_select_base_python "${PYTHON_COMMAND_FILE}"
 }
 
 print_python_candidates() {
@@ -322,7 +306,7 @@ print_python_candidates() {
     if command -v "${candidate}" >/dev/null 2>&1; then
       echo "    - ${candidate}: $("${candidate}" --version 2>&1)"
     fi
-  done < <(candidate_python_commands)
+  done < <(jelly_candidate_python_commands)
 }
 
 check_python_packages() {
@@ -531,11 +515,25 @@ PY
 }
 
 print_license_notice() {
+  local notice
+  if [[ -f "${LICENSE_NOTICE_FILE}" ]]; then
+    notice="$(cat "${LICENSE_NOTICE_FILE}")"
+  else
+    notice="jelly dict는 MIT License 조건으로 제공됩니다.
+외부 패키지와 선택 TTS 음성은 각각의 라이선스/약관을 따릅니다.
+이 앱의 설치, 실행, 생성물 사용으로 발생하는 책임은 관련 라이선스와 약관에 따라 사용자에게 있습니다.
+
+자세한 내용은 app_files/THIRD_PARTY_NOTICES.md를 확인하세요."
+  fi
+
   echo "라이선스 확인"
-  echo "  jelly dict는 MIT License 조건으로 제공됩니다."
-  echo "  외부 패키지와 선택 TTS 음성은 각각의 라이선스/약관을 따릅니다."
-  echo "  이 앱의 설치, 실행, 생성물 사용으로 발생하는 책임은 관련 라이선스와 약관에 따라 사용자에게 있습니다."
-  echo "  자세한 내용은 app_files/THIRD_PARTY_NOTICES.md를 확인하세요."
+  while IFS= read -r line; do
+    if [[ -n "${line}" ]]; then
+      echo "  ${line}"
+    else
+      echo
+    fi
+  done <<< "${notice}"
   echo
 }
 
@@ -619,7 +617,7 @@ check_system_requirements() {
   fi
 
   local base_python
-  if ! base_python="$(select_base_python)"; then
+  if ! base_python="$(jelly_select_base_python "${PYTHON_COMMAND_FILE}")"; then
     echo "  ✗ Python 3.12 또는 3.11을 찾지 못했습니다"
     echo "    확인한 Python 후보:"
     print_python_candidates
@@ -671,18 +669,18 @@ check_environment() {
   fi
 
   local base_python
-  if ! base_python="$(select_base_python)"; then
+  if ! base_python="$(jelly_select_base_python "${PYTHON_COMMAND_FILE}")"; then
     echo "  ✗ Python 3.12 또는 3.11을 찾지 못했습니다"
     failed=1
   else
-    echo "  ✓ selected Python: ${base_python} $(python_version_text "${base_python}")"
+    echo "  ✓ selected Python: ${base_python} $(jelly_python_version_text "${base_python}")"
   fi
 
   if [[ "${INSTALL_MODE}" == "venv" ]]; then
     if [[ ! -d "${VENV_DIR}" ]]; then
       echo "  ✗ virtual environment missing: ${VENV_DIR}"
       failed=1
-    elif ! venv_matches_current_location; then
+    elif ! jelly_venv_matches_current_location "${VENV_DIR}"; then
       echo "  ✗ virtual environment was created for a different folder"
       echo "    rerun Install jelly dict.command and allow dependency installation to recreate it"
       failed=1
@@ -705,7 +703,7 @@ check_environment() {
     echo "  ✓ requirements.txt"
   fi
 
-  if [[ "${INSTALL_MODE}" == "venv" && -d "${VENV_DIR}" ]] && venv_matches_current_location && venv_python_is_supported; then
+  if [[ "${INSTALL_MODE}" == "venv" && -d "${VENV_DIR}" ]] && jelly_venv_matches_current_location "${VENV_DIR}" && venv_python_is_supported; then
     # shellcheck source=/dev/null
     source "${VENV_DIR}/bin/activate"
     can_check_packages=1
@@ -768,7 +766,7 @@ save_install_mode
 save_python_command
 
 if [[ "${INSTALL_MODE}" == "venv" ]]; then
-  if [[ -d "${VENV_DIR}" ]] && { ! venv_matches_current_location || ! venv_python_is_supported; }; then
+  if [[ -d "${VENV_DIR}" ]] && { ! jelly_venv_matches_current_location "${VENV_DIR}" || ! venv_python_is_supported; }; then
     print_step "현재 폴더에 맞게 가상환경 재생성"
     rm -rf "${VENV_DIR}"
     print_ok "완료"

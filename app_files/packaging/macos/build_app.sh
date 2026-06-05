@@ -19,6 +19,9 @@ ICON_FILE="${APP_FILES_DIR}/assets/app-icon.icns"
 SHIM_SOURCE="${BUILD_DIR}/jelly-dict-launcher.c"
 EMBED_FLAGS_FILE="${BUILD_DIR}/python-embed-flags.sh"
 
+# shellcheck source=app_files/scripts/lib/common.sh
+source "${APP_FILES_DIR}/scripts/lib/common.sh"
+
 for required in "${INFO_PLIST}" "${LAUNCHER}" "${ICON_FILE}"; do
   if [[ ! -f "${required}" ]]; then
     echo "Required file missing: ${required}" >&2
@@ -26,37 +29,29 @@ for required in "${INFO_PLIST}" "${LAUNCHER}" "${ICON_FILE}"; do
   fi
 done
 
-python_is_supported() {
-  "$1" - <<'PY' >/dev/null 2>&1
-import sys
-version = sys.version_info[:2]
-raise SystemExit(0 if (3, 11) <= version < (3, 13) else 1)
-PY
-}
-
 select_embed_python() {
   local candidate
 
   candidate="${APP_SOURCE_DIR}/.venv/bin/python"
-  if [[ -x "${candidate}" ]] && python_is_supported "${candidate}"; then
+  if [[ -x "${candidate}" ]] && jelly_python_is_supported "${candidate}"; then
     printf '%s\n' "${candidate}"
     return 0
   fi
 
   if [[ -f "${APP_SOURCE_DIR}/.python_cmd" ]]; then
     candidate="$(tr -d '\r\n' < "${APP_SOURCE_DIR}/.python_cmd")"
-    if [[ -n "${candidate}" && "$(command -v "${candidate}" 2>/dev/null || true)" != "" ]] && python_is_supported "${candidate}"; then
+    if [[ -n "${candidate}" && "$(command -v "${candidate}" 2>/dev/null || true)" != "" ]] && jelly_python_is_supported "${candidate}"; then
       command -v "${candidate}"
       return 0
     fi
   fi
 
-  for candidate in python3.12 python3.11 python3; do
-    if command -v "${candidate}" >/dev/null 2>&1 && python_is_supported "${candidate}"; then
+  while IFS= read -r candidate; do
+    if command -v "${candidate}" >/dev/null 2>&1 && jelly_python_is_supported "${candidate}"; then
       command -v "${candidate}"
       return 0
     fi
-  done
+  done < <(jelly_candidate_python_commands)
 
   return 1
 }
