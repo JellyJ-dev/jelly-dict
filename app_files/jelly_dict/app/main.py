@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 
 from app.core import config
+from app.platform.macos import application_display_name as _application_display_name
+from app.platform.macos import prepare_macos_gui_process as _prepare_macos_gui_process
+from app.platform.macos import refresh_macos_application_menu as _refresh_macos_application_menu
+from app.platform.macos import set_macos_process_name as _set_macos_process_name
 
 
 def _quickstart_completed() -> bool:
@@ -54,50 +58,6 @@ def _setup_logging() -> None:
     root.addHandler(stream)
 
 
-def _application_display_name() -> str:
-    return getattr(config, "APP_DISPLAY_NAME", config.APP_NAME)
-
-
-def _set_macos_process_name(display_name: str) -> None:
-    try:
-        from Foundation import NSProcessInfo
-
-        NSProcessInfo.processInfo().setProcessName_(display_name)
-    except Exception as exc:  # pragma: no cover - depends on PyObjC/macOS session
-        logging.getLogger(__name__).info(
-            "macOS process name update skipped: %s", exc
-        )
-
-
-def _prepare_macos_gui_process() -> None:
-    if sys.platform != "darwin":
-        return
-
-    os.environ.setdefault("QT_MAC_WANTS_LAYER", "1")
-    _set_macos_process_name(_application_display_name())
-
-    try:
-        import ctypes
-
-        class ProcessSerialNumber(ctypes.Structure):
-            _fields_ = [
-                ("highLongOfPSN", ctypes.c_uint32),
-                ("lowLongOfPSN", ctypes.c_uint32),
-            ]
-
-        psn = ProcessSerialNumber(0, 2)  # kCurrentProcess
-        app_services = ctypes.CDLL(
-            "/System/Library/Frameworks/ApplicationServices.framework/"
-            "ApplicationServices"
-        )
-        app_services.TransformProcessType(ctypes.byref(psn), 1)
-        app_services.SetFrontProcess(ctypes.byref(psn))
-    except Exception as exc:  # pragma: no cover - macOS integration guard
-        logging.getLogger(__name__).info(
-            "macOS foreground process promotion skipped: %s", exc
-        )
-
-
 def _prepare_qt_application_metadata(QtCore, QtGui, app=None) -> None:
     display_name = _application_display_name()
     QtCore.QCoreApplication.setApplicationName(display_name)
@@ -106,29 +66,6 @@ def _prepare_qt_application_metadata(QtCore, QtGui, app=None) -> None:
     if app is not None:
         app.setApplicationName(display_name)
         app.setApplicationDisplayName(display_name)
-
-
-def _refresh_macos_application_menu(display_name: str | None = None) -> None:
-    if sys.platform != "darwin":
-        return
-
-    title = display_name or _application_display_name()
-    try:
-        from AppKit import NSApp
-
-        main_menu = NSApp.mainMenu()
-        if main_menu is None:
-            return
-        app_menu_item = main_menu.itemAtIndex_(0)
-        if app_menu_item is not None:
-            app_menu_item.setTitle_(title)
-            submenu = app_menu_item.submenu()
-            if submenu is not None:
-                submenu.setTitle_(title)
-    except Exception as exc:  # pragma: no cover - AppKit session dependent
-        logging.getLogger(__name__).info(
-            "macOS app menu title update skipped: %s", exc
-        )
 
 
 def _prepare_qt_plugin_paths() -> None:
