@@ -65,7 +65,6 @@ __all__ = [
     "find_existing",
 ]
 
-
 def ensure_workbook(path: Path, columns: list[str]) -> None:
     """Create the file with header row if it does not already exist."""
     if path.exists():
