@@ -33,6 +33,7 @@ def _copy_run_script(tmp_path: Path) -> tuple[Path, Path, Path]:
 
     run_script = scripts / "run.sh"
     shutil.copy2(APP_FILES_ROOT / "scripts" / "run.sh", run_script)
+    shutil.copytree(APP_FILES_ROOT / "scripts" / "lib", scripts / "lib")
     run_script.chmod(0o755)
 
     (app_dir / ".quickstart_ok").write_text(
@@ -97,19 +98,21 @@ def test_python_runtime_policy_rejects_known_bad_qt_app_versions():
 
     quickstart = _read(APP_FILES_ROOT / "scripts" / "quickstart.sh")
     run_script = _read(APP_FILES_ROOT / "scripts" / "run.sh")
+    common_script = _read(APP_FILES_ROOT / "scripts" / "lib" / "common.sh")
     readme = _read(PROJECT_ROOT / "README.md")
 
     support_guard = "(3, 11) <= version < (3, 13)"
-    assert support_guard in quickstart
-    assert support_guard in run_script
+    assert support_guard in common_script
+    assert "jelly_python_is_supported" in quickstart
+    assert "jelly_python_is_supported" in run_script
     assert "Python 3.13 + Qt can abort" in quickstart
     assert "Python 3.13 + Qt" in readme
     assert "brew install python@3.12" in readme
     assert "python@3.13       # 권장" not in readme
 
-    first_312 = quickstart.index("python3.12")
-    first_311 = quickstart.index("python3.11")
-    first_313 = quickstart.index("python3.13")
+    first_312 = common_script.index("python3.12")
+    first_311 = common_script.index("python3.11")
+    first_313 = common_script.index("python3.13")
     assert first_312 < first_313
     assert first_311 < first_313
 

@@ -2,10 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
-PUBLIC_ROOT="$(cd "${REPO_ROOT}/.." && pwd -P)"
-APP_DIR="${REPO_ROOT}/jelly_dict"
-VENV_DIR="${APP_DIR}/.venv"
+# shellcheck source=app_files/scripts/lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+REPO_ROOT="${JELLY_APP_FILES_ROOT}"
+PUBLIC_ROOT="${JELLY_PUBLIC_ROOT}"
+APP_DIR="${JELLY_APP_DIR}"
+VENV_DIR="${JELLY_VENV_DIR}"
 INSTALL_MODE_FILE="${APP_DIR}/.install_mode"
 PYTHON_COMMAND_FILE="${APP_DIR}/.python_cmd"
 SETUP_STATE_FILE="${APP_DIR}/.quickstart_ok"
@@ -108,15 +110,7 @@ cd "${APP_DIR}"
 mkdir -p "${LOG_DIR}"
 
 saved_install_mode() {
-  if [[ -f "${INSTALL_MODE_FILE}" ]]; then
-    local mode
-    mode="$(tr -d '[:space:]' < "${INSTALL_MODE_FILE}")"
-    if [[ "${mode}" == "venv" || "${mode}" == "local" ]]; then
-      printf '%s\n' "${mode}"
-      return
-    fi
-  fi
-  printf 'venv\n'
+  jelly_saved_install_mode "${INSTALL_MODE_FILE}"
 }
 
 if [[ -z "${INSTALL_MODE}" ]]; then
@@ -279,16 +273,7 @@ verify_public_layout() {
 }
 
 venv_matches_current_location() {
-  # Ask the venv's own Python where it lives. This is robust across
-  # CPython versions (the activate script template has changed format
-  # in 3.12+ / 3.13+) and across symlinked roots like /tmp → /private/tmp.
-  [[ -x "${VENV_DIR}/bin/python" ]] || return 1
-
-  local actual expected
-  actual="$("${VENV_DIR}/bin/python" -c 'import sys, os; print(os.path.realpath(sys.prefix))' 2>/dev/null)" || return 1
-  [[ -n "${actual}" && -d "${actual}" ]] || return 1
-  expected="$(cd "${VENV_DIR}" && pwd -P)"
-  [[ "${actual}" == "${expected}" ]]
+  jelly_venv_matches_current_location "${VENV_DIR}"
 }
 
 python_command() {
@@ -300,48 +285,15 @@ python_command() {
 }
 
 candidate_python_commands() {
-  # Order matters: prefer versions with known-good Qt/macOS app behavior first.
-  # Python 3.13 + PySide6 6.10 can abort while creating the Cocoa platform
-  # integration when launched from the generated .app on some macOS 26 systems.
-  printf '%s\n' \
-    python3.12 \
-    python3.11 \
-    python3.13 \
-    python3.14 \
-    python3 \
-    /opt/homebrew/bin/python3.12 \
-    /opt/homebrew/bin/python3.11 \
-    /opt/homebrew/bin/python3.13 \
-    /opt/homebrew/bin/python3.14 \
-    /opt/homebrew/bin/python3 \
-    /usr/local/bin/python3.12 \
-    /usr/local/bin/python3.11 \
-    /usr/local/bin/python3.13 \
-    /usr/local/bin/python3.14 \
-    /usr/local/bin/python3 \
-    /opt/homebrew/opt/python@3.12/bin/python3.12 \
-    /opt/homebrew/opt/python@3.11/bin/python3.11 \
-    /opt/homebrew/opt/python@3.13/bin/python3.13 \
-    /opt/homebrew/opt/python@3.14/bin/python3.14 \
-    /usr/local/opt/python@3.12/bin/python3.12 \
-    /usr/local/opt/python@3.11/bin/python3.11 \
-    /usr/local/opt/python@3.13/bin/python3.13 \
-    /usr/local/opt/python@3.14/bin/python3.14
+  jelly_candidate_python_commands
 }
 
 python_is_supported() {
-  "$1" - <<'PY' >/dev/null 2>&1
-import sys
-version = sys.version_info[:2]
-raise SystemExit(0 if (3, 11) <= version < (3, 13) else 1)
-PY
+  jelly_python_is_supported "$1"
 }
 
 python_version_text() {
-  "$1" - <<'PY' 2>/dev/null
-import sys
-print(sys.version.split()[0])
-PY
+  jelly_python_version_text "$1"
 }
 
 venv_python_is_supported() {
@@ -356,39 +308,7 @@ base_python_command() {
 }
 
 select_base_python() {
-  local candidate
-  local seen=":"
-
-  if [[ -n "${JELLY_DICT_PYTHON:-}" ]]; then
-    candidate="${JELLY_DICT_PYTHON}"
-    if command -v "${candidate}" >/dev/null 2>&1 && python_is_supported "${candidate}"; then
-      command -v "${candidate}"
-      return 0
-    fi
-  fi
-
-  if [[ -f "${PYTHON_COMMAND_FILE}" ]]; then
-    candidate="$(tr -d '\r\n' < "${PYTHON_COMMAND_FILE}")"
-    if [[ -n "${candidate}" && "${seen}" != *":${candidate}:"* ]]; then
-      seen="${seen}${candidate}:"
-      if command -v "${candidate}" >/dev/null 2>&1 && python_is_supported "${candidate}"; then
-        command -v "${candidate}"
-        return 0
-      fi
-    fi
-  fi
-
-  while IFS= read -r candidate; do
-    [[ -n "${candidate}" ]] || continue
-    [[ "${seen}" != *":${candidate}:"* ]] || continue
-    seen="${seen}${candidate}:"
-    if command -v "${candidate}" >/dev/null 2>&1 && python_is_supported "${candidate}"; then
-      command -v "${candidate}"
-      return 0
-    fi
-  done < <(candidate_python_commands)
-
-  return 1
+  jelly_select_base_python "${PYTHON_COMMAND_FILE}"
 }
 
 print_python_candidates() {

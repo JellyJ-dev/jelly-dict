@@ -21,86 +21,31 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
-APP_DIR="${REPO_ROOT}/jelly_dict"
-VENV_DIR="${APP_DIR}/.venv"
+# shellcheck source=app_files/scripts/lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+REPO_ROOT="${JELLY_APP_FILES_ROOT}"
+APP_DIR="${JELLY_APP_DIR}"
+VENV_DIR="${JELLY_VENV_DIR}"
 INSTALL_MODE_FILE="${APP_DIR}/.install_mode"
 PYTHON_COMMAND_FILE="${APP_DIR}/.python_cmd"
 SETUP_STATE_FILE="${APP_DIR}/.quickstart_ok"
 
-INSTALL_MODE="venv"
-if [[ -f "${INSTALL_MODE_FILE}" ]]; then
-  saved_mode="$(tr -d '[:space:]' < "${INSTALL_MODE_FILE}")"
-  if [[ "${saved_mode}" == "venv" || "${saved_mode}" == "local" ]]; then
-    INSTALL_MODE="${saved_mode}"
-  fi
-fi
+INSTALL_MODE="$(jelly_saved_install_mode "${INSTALL_MODE_FILE}")"
 
 base_python_command() {
-  local candidate=""
-  if [[ -f "${PYTHON_COMMAND_FILE}" ]]; then
-    candidate="$(tr -d '\r\n' < "${PYTHON_COMMAND_FILE}")"
-  fi
-
-  if [[ -n "${candidate}" ]] && command -v "${candidate}" >/dev/null 2>&1 && python_is_supported "${candidate}"; then
-    printf '%s\n' "${candidate}"
-    return 0
-  fi
-
-  local fallback
-  for fallback in python3.12 python3.11 python3; do
-    if command -v "${fallback}" >/dev/null 2>&1 && python_is_supported "${fallback}"; then
-      command -v "${fallback}"
-      return 0
-    fi
-  done
-
-  return 1
+  jelly_select_base_python "${PYTHON_COMMAND_FILE}"
 }
 
 python_is_supported() {
-  "$1" - <<'PY' >/dev/null 2>&1
-import sys
-version = sys.version_info[:2]
-raise SystemExit(0 if (3, 11) <= version < (3, 13) else 1)
-PY
+  jelly_python_is_supported "$1"
 }
 
 python_version_text() {
-  "$1" - <<'PY' 2>/dev/null
-import sys
-print(sys.version.split()[0])
-PY
+  jelly_python_version_text "$1"
 }
 
 prepare_qt_runtime_env() {
-  local python_bin="$1"
-  local pyside_root
-
-  pyside_root="$("${python_bin}" - <<'PY' 2>/dev/null
-import importlib.util
-from pathlib import Path
-
-spec = importlib.util.find_spec("PySide6")
-if spec is None or spec.origin is None:
-    raise SystemExit(1)
-print(Path(spec.origin).resolve().parent)
-PY
-)" || return 1
-
-  if [[ -d "${pyside_root}/Qt/plugins/platforms" ]]; then
-    export QT_PLUGIN_PATH="${pyside_root}/Qt/plugins"
-    export QT_QPA_PLATFORM_PLUGIN_PATH="${pyside_root}/Qt/plugins/platforms"
-  fi
-
-  if [[ -d "${pyside_root}/Qt/qml" ]]; then
-    case ":${QML2_IMPORT_PATH:-}:" in
-      *":${pyside_root}/Qt/qml:"*) ;;
-      *) export QML2_IMPORT_PATH="${pyside_root}/Qt/qml${QML2_IMPORT_PATH:+:${QML2_IMPORT_PATH}}" ;;
-    esac
-  fi
-
-  export QT_MAC_WANTS_LAYER=1
+  jelly_prepare_qt_runtime_env "$1"
 }
 
 quickstart_state_ok() {
@@ -123,15 +68,7 @@ quickstart_state_ok() {
 }
 
 venv_matches_current_location() {
-  # Use Python introspection — robust across CPython activate-template
-  # changes and symlinked roots (e.g. /tmp → /private/tmp on macOS).
-  [[ -x "${VENV_DIR}/bin/python" ]] || return 1
-
-  local actual expected
-  actual="$("${VENV_DIR}/bin/python" -c 'import sys, os; print(os.path.realpath(sys.prefix))' 2>/dev/null)" || return 1
-  [[ -n "${actual}" && -d "${actual}" ]] || return 1
-  expected="$(cd "${VENV_DIR}" && pwd -P)"
-  [[ "${actual}" == "${expected}" ]]
+  jelly_venv_matches_current_location "${VENV_DIR}"
 }
 
 if ! quickstart_state_ok; then
