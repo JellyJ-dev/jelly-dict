@@ -143,9 +143,28 @@ class EntryDetailDialog(QtWidgets.QDialog):
         body_layout.addStretch(1)
         self._tts_toast = _DetailToast(self)
 
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 - Qt API
-        if self._tts_thread is not None and self._tts_thread.isRunning():
+    def _is_tts_running(self) -> bool:
+        if self._tts_thread is None:
+            return False
+        try:
+            return self._tts_thread.isRunning()
+        except RuntimeError:
+            self._clear_tts_worker()
+            return False
+
+    def _ready_for_close(self) -> bool:
+        if self._is_tts_running():
             self._show_tts_message("TTS 생성이 끝난 뒤 닫을 수 있습니다.")
+            return False
+        return True
+
+    def done(self, result: int) -> None:
+        if not self._ready_for_close():
+            return
+        super().done(result)
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 - Qt API
+        if not self._ready_for_close():
             event.ignore()
             return
         super().closeEvent(event)

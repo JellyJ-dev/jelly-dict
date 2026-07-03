@@ -7,6 +7,11 @@ from app.storage.settings_store import Settings
 from app.ui.entry_detail_dialog import EntryDetailDialog
 
 
+class _RunningThread:
+    def isRunning(self) -> bool:  # noqa: N802 - Qt-style test double
+        return True
+
+
 def _label_texts(dialog: EntryDetailDialog) -> list[str]:
     return [label.text() for label in dialog.findChildren(QtWidgets.QLabel)]
 
@@ -172,6 +177,37 @@ def test_entry_detail_supports_standard_close_shortcut(qtbot):
     assert dialog.close_shortcut.context() == QtCore.Qt.ShortcutContext.WindowShortcut
 
     assert dialog.close_shortcut.parent() is dialog
+
+
+def test_entry_detail_blocks_accept_reject_and_done_while_tts_is_running(qtbot):
+    entry = VocabularyEntry(language="en", word="distribution", meanings_summary="1.유통")
+    dialog = EntryDetailDialog(entry)
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    dialog._tts_thread = _RunningThread()  # type: ignore[assignment]
+
+    dialog.accept()
+    assert dialog.result() == 0
+    assert dialog.isVisible()
+
+    dialog.reject()
+    assert dialog.result() == 0
+    assert dialog.isVisible()
+
+    dialog.done(QtWidgets.QDialog.Accepted)
+    assert dialog.result() == 0
+    assert dialog.isVisible()
+
+    toast = dialog.findChild(QtWidgets.QFrame, "entryDetailTtsToast")
+    assert toast is not None
+    assert toast.isVisible()
+    assert "TTS 생성이 끝난 뒤 닫을 수 있습니다." in toast.findChild(
+        QtWidgets.QLabel,
+        "entryDetailTtsToastMessage",
+    ).text()
+
+    dialog._tts_thread = None
 
 
 def test_entry_detail_tts_button_tracks_settings(qtbot):
