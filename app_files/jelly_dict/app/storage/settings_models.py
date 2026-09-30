@@ -1,0 +1,43 @@
+"""Compatibility re-exports for settings value objects now owned by core."""
+
+from app.core.settings import (
+    CURRENT_SETTINGS_SCHEMA_VERSION,
+    EXCEL_COLUMN_KEYS_DEFAULT,
+    AnkiSettings,
+    AppSettings,
+    ExportPreferenceSettings,
+    FileTargetSettings,
+    LookupSettings,
+    OcrSettings,
+    PathSettings,
+    ProviderSettings,
+    SaveBehaviorSettings,
+    Settings,
+    SettingsDraft,
+    SettingsValidationError,
+    TtsRuntimeSettings,
+    TtsSettings,
+    UiPreferences,
+    UiPreferenceSettings,
+)
+
+__all__ = [
+    "AppSettings",
+    "AnkiSettings",
+    "CURRENT_SETTINGS_SCHEMA_VERSION",
+    "EXCEL_COLUMN_KEYS_DEFAULT",
+    "ExportPreferenceSettings",
+    "FileTargetSettings",
+    "LookupSettings",
+    "OcrSettings",
+    "PathSettings",
+    "ProviderSettings",
+    "SaveBehaviorSettings",
+    "Settings",
+    "SettingsDraft",
+    "SettingsValidationError",
+    "TtsSettings",
+    "TtsRuntimeSettings",
+    "UiPreferenceSettings",
+    "UiPreferences",
+]

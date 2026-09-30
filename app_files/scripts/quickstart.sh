@@ -1,0 +1,672 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=app_files/scripts/lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+REPO_ROOT="${JELLY_APP_FILES_ROOT}"
+PUBLIC_ROOT="${JELLY_PUBLIC_ROOT}"
+APP_DIR="${JELLY_APP_DIR}"
+VENV_DIR="${JELLY_VENV_DIR}"
+LICENSE_NOTICE_FILE="${PUBLIC_ROOT}/app_files/LICENSE_NOTICE.txt"
+INSTALL_MODE_FILE="${APP_DIR}/.install_mode"
+PYTHON_COMMAND_FILE="${APP_DIR}/.python_cmd"
+SETUP_STATE_FILE="${APP_DIR}/.quickstart_ok"
+LOG_DIR="${APP_DIR}/.jelly_dict/logs"
+QUICKSTART_LOG="${LOG_DIR}/quickstart.log"
+RUNTIME_CHECKER="${SCRIPT_DIR}/runtime_checker.py"
+SPACY_EN_MODEL_VERSION="3.8.0"
+SPACY_EN_MODEL_WHEEL_URL="https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-${SPACY_EN_MODEL_VERSION}/en_core_web_sm-${SPACY_EN_MODEL_VERSION}-py3-none-any.whl"
+
+WITH_TTS=0
+RUN_AFTER=0
+DETACH_RUN=0
+CHECK_ONLY=0
+INSTALL_MODE=""
+LICENSE_ACCEPTED=0
+
+if [[ -t 1 ]]; then
+  RESET="$(printf '\033[0m')"
+  ACCENT="$(printf '\033[38;5;209m')"
+  MUTED="$(printf '\033[38;5;245m')"
+  GREEN="$(printf '\033[38;5;108m')"
+  RED="$(printf '\033[38;5;203m')"
+else
+  RESET=""
+  ACCENT=""
+  MUTED=""
+  GREEN=""
+  RED=""
+fi
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/quickstart.sh [--run] [--tts] [--mode venv|local]
+
+Options:
+  --run   Install/update dependencies, then start jelly dict.
+  --detach
+          When used with --run, launch the app in the background.
+  --tts   Also install optional TTS Python dependencies.
+  --mode  Choose dependency target. venv is recommended.
+  --accept-license
+         Confirm license/responsibility notice non-interactively.
+  --check Validate the local environment without installing.
+  -h, --help
+         Show this help.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --run)
+      RUN_AFTER=1
+      shift
+      ;;
+    --detach)
+      DETACH_RUN=1
+      shift
+      ;;
+    --tts)
+      WITH_TTS=1
+      shift
+      ;;
+    --check)
+      CHECK_ONLY=1
+      shift
+      ;;
+    --mode)
+      if [[ $# -lt 2 ]]; then
+        echo "--mode requires venv or local" >&2
+        exit 2
+      fi
+      INSTALL_MODE="$2"
+      shift 2
+      ;;
+    --accept-license)
+      LICENSE_ACCEPTED=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! -d "${APP_DIR}" ]]; then
+  echo "jelly dict 앱 파일 구조가 원래 배포본과 다릅니다." >&2
+  echo "필수 폴더를 찾을 수 없습니다: ${APP_DIR}" >&2
+  echo >&2
+  echo "의도한 수정이 아니라면 재다운로드하거나, git으로 받은 경우 git pull 후 다시 실행하세요." >&2
+  echo "현재 폴더를 직접 옮기거나 일부 파일만 복사한 경우에는 지원하지 않습니다." >&2
+  exit 1
+fi
+
+cd "${APP_DIR}"
+mkdir -p "${LOG_DIR}"
+
+saved_install_mode() {
+  jelly_saved_install_mode "${INSTALL_MODE_FILE}"
+}
+
+if [[ -z "${INSTALL_MODE}" ]]; then
+  INSTALL_MODE="$(saved_install_mode)"
+fi
+
+if [[ "${INSTALL_MODE}" != "venv" && "${INSTALL_MODE}" != "local" ]]; then
+  echo "Invalid install mode: ${INSTALL_MODE}" >&2
+  echo "Use --mode venv or --mode local." >&2
+  exit 2
+fi
+
+save_install_mode() {
+  printf '%s\n' "${INSTALL_MODE}" > "${INSTALL_MODE_FILE}"
+}
+
+save_python_command() {
+  printf '%s\n' "$(base_python_command)" > "${PYTHON_COMMAND_FILE}"
+}
+
+write_setup_state() {
+  {
+    printf 'quickstart_ok=1\n'
+    printf 'mode=%s\n' "${INSTALL_MODE}"
+    printf 'app_dir=%s\n' "${APP_DIR}"
+    printf 'updated_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  } > "${SETUP_STATE_FILE}"
+}
+
+print_layout_recovery_hint() {
+  cat <<EOF
+
+jelly dict 앱 파일 구조가 원래 배포본과 다릅니다.
+이 상태에서 설치를 계속하는 것은 권장하지 않습니다.
+
+의도한 수정이 아니라면 아래 중 하나로 복구하세요.
+  - 다운로드 받은 압축/폴더를 새로 받기
+  - git으로 받은 경우: git pull 후 다시 실행
+  - 일부 파일만 복사했다면 전체 폴더를 다시 복사
+
+정상적인 최상위 구조:
+  jelly-dict/
+  ├── Install jelly dict.command
+  ├── Update jelly dict.command
+  ├── Run jelly dict.command
+  ├── README.md
+  └── app_files/
+EOF
+}
+
+print_step() {
+  printf '  %s•%s %s\n' "${ACCENT}" "${RESET}" "$1"
+}
+
+print_ok() {
+  printf '    %s✓%s %s\n' "${GREEN}" "${RESET}" "$1"
+}
+
+print_fail() {
+  printf '    %s✗%s %s\n' "${RED}" "${RESET}" "$1"
+}
+
+show_log_hint() {
+  printf '    %s로그: %s%s\n' "${MUTED}" "${QUICKSTART_LOG}" "${RESET}"
+}
+
+sanitize_proxy_env() {
+  # pip cannot use SOCKS proxies without the pysocks package — which we
+  # haven't installed yet at this point. If the shell has ALL_PROXY /
+  # HTTPS_PROXY / HTTP_PROXY pointing at a socks:// URL (common on macOS
+  # with Clash, V2Ray, mihomo, etc.) strip them for our pip subprocess so
+  # the install reaches PyPI over a direct connection. HTTP/HTTPS proxies
+  # are left intact because pip handles those natively.
+  local var val notified=0
+  for var in ALL_PROXY all_proxy HTTPS_PROXY https_proxy HTTP_PROXY http_proxy; do
+    eval "val=\${${var}:-}"
+    if [[ -n "${val}" && "${val}" == socks* ]]; then
+      unset "${var}"
+      if [[ "${notified}" -eq 0 ]]; then
+        printf '  %s!%s SOCKS proxy detected in environment — disabling for pip install\n' "${ACCENT}" "${RESET}"
+        notified=1
+      fi
+    fi
+  done
+}
+
+run_logged() {
+  local label="$1"
+  shift
+
+  print_step "${label}"
+  {
+    echo
+    echo "## ${label}"
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+    printf '$'
+    printf ' %q' "$@"
+    echo
+  } >> "${QUICKSTART_LOG}"
+
+  if "$@" >> "${QUICKSTART_LOG}" 2>&1; then
+    print_ok "완료"
+    return 0
+  fi
+
+  print_fail "실패"
+  show_log_hint
+  echo
+  echo "마지막 로그:"
+  tail -n 30 "${QUICKSTART_LOG}" | sed 's/^/    /'
+  return 1
+}
+
+verify_public_layout() {
+  local failed=0
+
+  echo
+  echo "앱 파일 구조 확인 중..."
+
+  for path in \
+    "${PUBLIC_ROOT}/Install jelly dict.command" \
+    "${PUBLIC_ROOT}/Update jelly dict.command" \
+    "${PUBLIC_ROOT}/Run jelly dict.command" \
+    "${PUBLIC_ROOT}/README.md" \
+    "${PUBLIC_ROOT}/app_files" \
+    "${PUBLIC_ROOT}/app_files/LICENSE_NOTICE.txt" \
+   "${REPO_ROOT}/scripts/install_app.sh" \
+    "${REPO_ROOT}/scripts/quickstart.sh" \
+    "${REPO_ROOT}/scripts/run.sh" \
+    "${REPO_ROOT}/scripts/runtime_checker.py" \
+   "${APP_DIR}/app/core/dependency_policy.py" \
+    "${APP_DIR}/app/main.py" \
+    "${APP_DIR}/requirements.txt" \
+    "${APP_DIR}/requirements-tts.txt" \
+    "${APP_DIR}/constraints/python311.txt" \
+    "${APP_DIR}/constraints/python312.txt" \
+    "${APP_DIR}/constraints/tts-python311.txt" \
+    "${APP_DIR}/constraints/tts-python312.txt"; do
+    if [[ ! -e "${path}" ]]; then
+      echo "  ✗ 없음: ${path}"
+      failed=1
+    fi
+  done
+
+  for path in \
+    "${PUBLIC_ROOT}/Install jelly dict.command" \
+    "${PUBLIC_ROOT}/Update jelly dict.command" \
+    "${PUBLIC_ROOT}/Run jelly dict.command" \
+    "${REPO_ROOT}/scripts/install_app.sh" \
+    "${REPO_ROOT}/scripts/quickstart.sh" \
+    "${REPO_ROOT}/scripts/run.sh"; do
+    if [[ -e "${path}" && ! -x "${path}" ]]; then
+      echo "  ✗ 실행 권한 없음: ${path}"
+      failed=1
+    fi
+  done
+
+  if [[ -f "${PUBLIC_ROOT}/dev.md" ]]; then
+    echo "  ✗ dev.md가 최상위 공개 폴더에 있습니다"
+    failed=1
+  fi
+
+  if [[ "${failed}" -eq 0 ]]; then
+    echo "  ✓ 앱 파일 구조 정상"
+  else
+    print_layout_recovery_hint
+  fi
+
+  return "${failed}"
+}
+
+python_command() {
+  if [[ "${INSTALL_MODE}" == "venv" ]]; then
+    printf 'python\n'
+  else
+    base_python_command
+  fi
+}
+
+venv_python_is_supported() {
+  [[ -x "${VENV_DIR}/bin/python" ]] || return 1
+  jelly_python_is_supported "${VENV_DIR}/bin/python"
+}
+
+base_python_command() {
+  local command
+  command="$(jelly_select_base_python "${PYTHON_COMMAND_FILE}")"
+  printf '%s\n' "${command}"
+}
+
+print_python_candidates() {
+  local candidate
+  local seen=":"
+
+  while IFS= read -r candidate; do
+    [[ -n "${candidate}" ]] || continue
+    [[ "${seen}" != *":${candidate}:"* ]] || continue
+    seen="${seen}${candidate}:"
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      echo "    - ${candidate}: $("${candidate}" --version 2>&1)"
+    fi
+  done < <(jelly_candidate_python_commands)
+}
+
+check_python_packages() {
+  "$(python_command)" "${RUNTIME_CHECKER}" packages
+}
+
+check_qt_runtime() {
+  "$(python_command)" "${RUNTIME_CHECKER}" qt
+}
+
+check_playwright_chromium() {
+  "$(python_command)" "${RUNTIME_CHECKER}" playwright-chromium
+}
+
+constraint_path() {
+  "$(python_command)" "${RUNTIME_CHECKER}" constraint-path "$1"
+}
+
+install_requirements_or_explain() {
+  local runtime_constraint
+  runtime_constraint="$(constraint_path runtime)"
+  if run_logged "필수 Python 패키지 설치" "$(python_command)" -m pip install \
+    -r requirements.txt -c "${runtime_constraint}"; then
+    return 0
+  fi
+
+  cat >&2 <<'EOF'
+
+필수 패키지 설치에 실패했습니다.
+
+PySide6는 Python 버전별 macOS wheel과 Qt/macOS 런타임 안정성의 영향을 받습니다.
+이 앱은 PySide6 >=6.7,<6.11 범위를 사용하며, 현재 macOS 앱 번들은
+Python 3.12 또는 3.11 환경만 사용합니다.
+
+Homebrew 기본 Python이 3.13+ 인 경우 호환 버전을 설치하세요:
+  brew install python@3.12     # 권장
+  brew install python@3.11
+
+그 뒤 Install jelly dict.command를 다시 실행하세요. 설치된 여러 Python 중
+원하는 버전을 강제하려면 JELLY_DICT_PYTHON 환경변수도 가능합니다:
+  JELLY_DICT_PYTHON=/opt/homebrew/bin/python3.12 ./Install\ jelly\ dict.command
+
+로그에 "Missing dependencies for SOCKS support" 가 보이면 셸의
+ALL_PROXY / HTTPS_PROXY 가 socks://... 로 설정돼 있는 경우입니다.
+이번 실행에서는 자동으로 무시했지만, Clash/V2Ray/mihomo 같은 프록시 앱을
+끄거나 다음 셸 세션에서 unset 해도 됩니다:
+  unset ALL_PROXY HTTPS_PROXY HTTP_PROXY
+EOF
+  return 1
+}
+
+install_spacy_english_model() {
+  # Avoid `python -m spacy download`, which first fetches compatibility.json
+  # from raw.githubusercontent.com and can fail before pip reaches the wheel.
+  run_logged "Kokoro 영어 G2P 모델 설치" "$(python_command)" -m pip install \
+    --upgrade --disable-pip-version-check --retries 10 --timeout 60 \
+    "${SPACY_EN_MODEL_WHEEL_URL}"
+}
+
+check_tts_packages() {
+  "$(python_command)" "${RUNTIME_CHECKER}" tts-packages
+}
+
+print_license_notice() {
+  local notice
+  if [[ -f "${LICENSE_NOTICE_FILE}" ]]; then
+    notice="$(cat "${LICENSE_NOTICE_FILE}")"
+  else
+    notice="jelly dict는 MIT License 조건으로 제공됩니다.
+외부 패키지와 선택 TTS 음성은 각각의 라이선스/약관을 따릅니다.
+이 앱의 설치, 실행, 생성물 사용으로 발생하는 책임은 관련 라이선스와 약관에 따라 사용자에게 있습니다.
+
+자세한 내용은 app_files/THIRD_PARTY_NOTICES.md를 확인하세요."
+  fi
+
+  echo "라이선스 확인"
+  while IFS= read -r line; do
+    if [[ -n "${line}" ]]; then
+      echo "  ${line}"
+    else
+      echo
+    fi
+  done <<< "${notice}"
+  echo
+}
+
+accept_license_or_exit() {
+  local answer
+
+  print_license_notice
+  read -r -p "위 내용을 확인했고 동의합니까? [y/N] " answer
+  answer="$(printf '%s' "${answer}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${answer}" != "y" && "${answer}" != "yes" ]]; then
+    echo "동의하지 않아 설치를 중단합니다."
+    exit 1
+  fi
+}
+
+check_python_version() {
+  local python_cmd="$1"
+  "${python_cmd}" "${RUNTIME_CHECKER}" python-version
+}
+
+check_disk_space() {
+  local available_kb
+
+  available_kb="$(df -Pk "${APP_DIR}" | awk 'NR == 2 {print $4}')"
+  if [[ -z "${available_kb}" ]]; then
+    echo "  ! disk space check skipped"
+    return
+  fi
+
+  if (( available_kb < 1048576 )); then
+    echo "  ! free disk space is under 1 GB; dependency install may fail"
+  else
+    echo "  ✓ free disk space OK"
+  fi
+}
+
+check_quarantine_warning() {
+  local target="${REPO_ROOT}/.."
+
+  if command -v xattr >/dev/null 2>&1 && xattr -p com.apple.quarantine "${target}" >/dev/null 2>&1; then
+    echo "  ! macOS quarantine attribute detected on the app folder"
+    echo "    If double-click fails, right-click the .command file and choose Open."
+  fi
+}
+
+check_system_requirements() {
+  local failed=0
+  local os_name
+
+  os_name="$(uname -s 2>/dev/null || true)"
+  if [[ "${os_name}" != "Darwin" ]]; then
+    echo "  ✗ macOS required. Current system: ${os_name:-unknown}"
+    failed=1
+  else
+    if command -v sw_vers >/dev/null 2>&1; then
+      echo "  ✓ macOS: $(sw_vers -productVersion)"
+    else
+      echo "  ✓ macOS detected"
+    fi
+  fi
+
+  echo "  architecture: $(uname -m 2>/dev/null || echo unknown)"
+  if [[ "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" == "1" ]]; then
+    echo "  ! running under Rosetta; native arm64/x86_64 Python is usually more stable"
+  fi
+
+  local base_python
+  if ! base_python="$(jelly_select_base_python "${PYTHON_COMMAND_FILE}")"; then
+    echo "  ✗ Python 3.12 또는 3.11을 찾지 못했습니다"
+    echo "    확인한 Python 후보:"
+    print_python_candidates
+    failed=1
+  elif ! check_python_version "${base_python}"; then
+    failed=1
+  else
+    echo "  ✓ selected Python: ${base_python}"
+  fi
+
+  if [[ -n "${base_python:-}" ]] && ! "${base_python}" -m pip --version >/dev/null 2>&1; then
+    echo "  ✗ selected Python pip is not available"
+    failed=1
+  elif [[ -n "${base_python:-}" ]]; then
+    echo "  ✓ selected Python pip"
+  fi
+
+  if [[ "${INSTALL_MODE}" == "venv" && -n "${base_python:-}" ]]; then
+    if ! "${base_python}" -m venv --help >/dev/null 2>&1; then
+      echo "  ✗ selected Python venv module is not available"
+      failed=1
+    else
+      echo "  ✓ selected Python venv"
+    fi
+  fi
+
+  if [[ ! -w "${APP_DIR}" ]]; then
+    echo "  ✗ app folder is not writable: ${APP_DIR}"
+    failed=1
+  else
+    echo "  ✓ app folder writable"
+  fi
+
+  check_disk_space
+  check_quarantine_warning
+
+  return "${failed}"
+}
+
+check_environment() {
+  local failed=0
+  local can_check_packages=0
+
+  echo "Checking environment..."
+  echo "  install mode: ${INSTALL_MODE}"
+
+  if ! check_system_requirements; then
+    failed=1
+  fi
+
+  local base_python
+  if ! base_python="$(jelly_select_base_python "${PYTHON_COMMAND_FILE}")"; then
+    echo "  ✗ Python 3.12 또는 3.11을 찾지 못했습니다"
+    failed=1
+  else
+    echo "  ✓ selected Python: ${base_python} $(jelly_python_version_text "${base_python}")"
+  fi
+
+  if [[ "${INSTALL_MODE}" == "venv" ]]; then
+    if [[ ! -d "${VENV_DIR}" ]]; then
+      echo "  ✗ virtual environment missing: ${VENV_DIR}"
+      failed=1
+    elif ! jelly_venv_matches_current_location "${VENV_DIR}"; then
+      echo "  ✗ virtual environment was created for a different folder"
+      echo "    rerun Install jelly dict.command and allow dependency installation to recreate it"
+      failed=1
+    elif ! venv_python_is_supported; then
+      echo "  ✗ virtual environment Python is not supported: $("${VENV_DIR}/bin/python" -V 2>&1)"
+      echo "    Python 3.12 or 3.11 is required for the generated macOS app"
+      echo "    rerun Install jelly dict.command to recreate the environment"
+      failed=1
+    else
+      echo "  ✓ virtual environment: ${VENV_DIR}"
+    fi
+  else
+    echo "  ✓ using local Python environment"
+  fi
+
+  if [[ ! -f requirements.txt ]]; then
+    echo "  ✗ requirements.txt missing"
+    failed=1
+  else
+    echo "  ✓ requirements.txt"
+  fi
+
+  if [[ "${INSTALL_MODE}" == "venv" && -d "${VENV_DIR}" ]] && jelly_venv_matches_current_location "${VENV_DIR}" && venv_python_is_supported; then
+    # shellcheck source=/dev/null
+    source "${VENV_DIR}/bin/activate"
+    can_check_packages=1
+  elif [[ "${INSTALL_MODE}" == "local" ]]; then
+    can_check_packages=1
+  fi
+
+  if [[ "${can_check_packages}" -eq 1 ]]; then
+    if check_python_packages; then
+      :
+    else
+      failed=1
+    fi
+
+    if check_qt_runtime; then
+      :
+    else
+      failed=1
+    fi
+
+    if check_playwright_chromium; then
+      :
+    else
+      echo "  ✗ Playwright Chromium missing"
+      failed=1
+    fi
+
+    if [[ "${WITH_TTS}" -eq 1 ]]; then
+      if check_tts_packages; then
+        :
+      else
+        failed=1
+      fi
+
+      if command -v ffmpeg >/dev/null 2>&1; then
+        echo "  ✓ ffmpeg"
+      else
+        echo "  ✗ ffmpeg missing"
+        failed=1
+      fi
+    fi
+  fi
+
+  return "${failed}"
+}
+
+if ! verify_public_layout; then
+  exit 1
+fi
+
+if [[ "${CHECK_ONLY}" -eq 1 ]]; then
+  check_environment
+  exit $?
+fi
+
+if [[ "${LICENSE_ACCEPTED}" -ne 1 ]]; then
+  accept_license_or_exit
+fi
+save_install_mode
+save_python_command
+
+if [[ "${INSTALL_MODE}" == "venv" ]]; then
+  if [[ -d "${VENV_DIR}" ]] && { ! jelly_venv_matches_current_location "${VENV_DIR}" || ! venv_python_is_supported; }; then
+    print_step "현재 폴더에 맞게 가상환경 재생성"
+    rm -rf "${VENV_DIR}"
+    print_ok "완료"
+  fi
+
+  if [[ ! -d "${VENV_DIR}" ]]; then
+    run_logged "전용 가상환경 생성" "$(base_python_command)" -m venv "${VENV_DIR}"
+  fi
+
+  # shellcheck source=/dev/null
+  source "${VENV_DIR}/bin/activate"
+fi
+
+sanitize_proxy_env
+
+run_logged "pip 업데이트" "$(python_command)" -m pip install --upgrade pip
+install_requirements_or_explain
+
+if [[ "${WITH_TTS}" -eq 1 ]]; then
+  runtime_constraint="$(constraint_path runtime)"
+  tts_constraint="$(constraint_path tts)"
+  run_logged "TTS Python 패키지 설치" "$(python_command)" -m pip install \
+    -r requirements-tts.txt -c "${runtime_constraint}" -c "${tts_constraint}"
+  run_logged "Kokoro 로컬 모델 캐시 설치" "$(python_command)" -c 'from huggingface_hub import snapshot_download; snapshot_download("hexgrad/Kokoro-82M", allow_patterns=["config.json", "kokoro-v1_0.pth", "voices/af_heart.pt", "voices/jf_alpha.pt", "voices/jf_gongitsune.pt", "voices/jm_kumo.pt"])'
+  install_spacy_english_model
+  run_logged "Kokoro 일본어 사전 설치" "$(python_command)" -m unidic download
+fi
+
+run_logged "Playwright Chromium 설치" "$(python_command)" -m playwright install chromium
+
+echo
+if ! check_environment; then
+  echo
+  echo "Environment check failed. Review the messages above and rerun quickstart."
+  exit 1
+fi
+
+if ! verify_public_layout; then
+  exit 1
+fi
+
+echo
+echo "Ready."
+echo "Run the app with:"
+echo "  ${REPO_ROOT}/scripts/run.sh"
+
+write_setup_state
+
+if [[ "${RUN_AFTER}" -eq 1 ]]; then
+  if [[ "${DETACH_RUN}" -eq 1 ]]; then
+    "${REPO_ROOT}/scripts/run.sh" --detach
+  else
+    exec "${REPO_ROOT}/scripts/run.sh"
+  fi
+fi

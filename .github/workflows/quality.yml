@@ -1,0 +1,48 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install constrained runtime dependencies
+        run: |
+          python -m venv app_files/jelly_dict/.venv
+          constraint="app_files/jelly_dict/constraints/python${{ matrix.python-version == '3.11' && '311' || '312' }}.txt"
+          app_files/jelly_dict/.venv/bin/python -m pip install --upgrade pip
+          app_files/jelly_dict/.venv/bin/python -m pip install -r app_files/jelly_dict/requirements.txt -c "${constraint}"
+          app_files/jelly_dict/.venv/bin/python -m playwright install chromium
+
+      - name: Verify release and runtime
+        run: |
+          app_files/jelly_dict/.venv/bin/python app_files/scripts/check_release_metadata.py
+          app_files/jelly_dict/.venv/bin/python app_files/scripts/sync_dependency_files.py
+          app_files/jelly_dict/.venv/bin/python app_files/scripts/runtime_checker.py dependency-smoke
+          app_files/jelly_dict/.venv/bin/python -m compileall -q app_files/jelly_dict/app app_files/scripts
+          bash -n app_files/scripts/*.sh app_files/scripts/lib/*.sh app_files/packaging/macos/*.sh
+          git diff --check
+
+      - name: Prepare installer runtime for native app smoke
+        if: matrix.python-version == '3.12'
+        run: ./app_files/scripts/quickstart.sh --mode venv --accept-license
+
+      - name: Build and open/quit macOS app
+        if: matrix.python-version == '3.12'
+        run: app_files/jelly_dict/.venv/bin/python app_files/scripts/macos_app_smoke.py

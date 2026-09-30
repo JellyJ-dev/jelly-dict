@@ -1,0 +1,111 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+.venv/
+venv/
+**/.venv/
+**/venv/
+
+.pytest_cache/
+.coverage
+coverage.json
+**/.pytest_cache/
+.jelly_dict/
+**/.jelly_dict/
+.install_mode
+**/.install_mode
+.quickstart_ok
+**/.quickstart_ok
+.install_incomplete
+**/.install_incomplete
+.python_cmd
+**/.python_cmd
+
+build/
+dist/
+**/build/
+**/dist/
+*.app/
+*.dmg
+
+*.xlsx
+*.xls
+*.apkg
+*.tsv
+*.log
+
+.idea/
+.vscode/
+.claude/
+
+# secrets — never commit API keys, .env files, or anything resembling them
+.env
+.env.*
+*.secret
+secrets.*
+*.key
+*.pem
+settings.local.json
+
+# zip dumps / images
+jelly_dict.zip
+ChatGPT Image*.png
+
+# downloaded dictionary datasets
+전체 내려받기_한국어기초사전_xls_*/
+*한국어기초사전*xls*/
+
+# private maintainer-only notes — never publish
+app_files/dev.md
+**/dev.md
+task.md
+**/task.md
+implementation_plan.md
+**/implementation_plan.md
+walkthrough.md
+**/walkthrough.md
+
+# Local audits, plans, research and generated benchmark results
+/output/
+/docs/refactoring/
+/docs/maintenance/
+/docs/search-*.md
+/refactoring_*.md
+/app_files/jelly_dict/benchmarks/*.json
+.ruff_cache/
+.mypy_cache/
+*.sqlite
+*.sqlite3
+*.db
+
+# Only reviewed user-facing Markdown is public. Internal documentation stays local.
+/docs/
+*.md
+!/README.md
+!/app_files/jelly_dict/README.md
+!/app_files/THIRD_PARTY_NOTICES.md
+
+# Private QA resources, dummy fixtures and obsolete design sources
+/app_files/jelly_dict/tests/
+/app_files/jelly_dict/benchmarks/
+/app_files/assets/source/
+/app_files/jelly_dict/requirements-dev.txt
+/app_files/scripts/check_coverage.py
+/app_files/scripts/dump_naver_entry.py
+/app_files/scripts/quality_gate.sh
+
+# Generated logs, captures, archives and documents stay local.
+*.log.*
+logs/
+*.out
+*.err
+*.trace
+*.har
+*.json
+*.csv
+*.pdf
+*.docx
+*.zip
+*.iconset/

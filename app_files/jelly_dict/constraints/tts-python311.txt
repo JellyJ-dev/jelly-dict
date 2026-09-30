@@ -1,0 +1,13 @@
+# Generated from app/core/dependency_policy.py for CPython 3.11.
+kokoro==0.9.4
+soundfile==0.13.1
+spacy==3.8.14
+misaki==0.9.4
+en-core-web-sm==3.8.0
+pyopenjtalk==0.4.1
+fugashi==1.5.2
+unidic==1.1.0
+huggingface-hub==1.17.0
+numpy==2.4.6
+torch==2.12.0
+transformers==5.9.0

@@ -1,0 +1,12 @@
+from pathlib import Path
+
+NORMAL_LIST_HEIGHT = 348
+ROOT_MARGIN_NORMAL = (64, 8, 64, 16)
+ROOT_MARGIN_EXPANDED = (36, 14, 36, 16)
+HERO_TO_WORDBOOK_SPACING = 4
+ROOT_LAYOUT_SPACING = 6
+RESOURCE_DIR = Path(__file__).resolve().parents[3] / "resources"
+RECENT_EMPTY_TEXT = "최근 기록 없음"
+RECENT_FILTER_EMPTY_TEXT = "검색 결과 없음"
+WORDBOOK_EMPTY_TEXT = "저장된 단어 없음"
+WORDBOOK_FILTER_EMPTY_TEXT = "검색 결과 없음"

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jelly-dict"
+version = "2.1"
+description = "macOS English/Japanese vocabulary collector (personal use)"
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/anki/tts/cache.py" = ["F401"]
+"app/main.py" = ["F401"]
+"app/services/tts_audio_service.py" = ["F822"]
+"app/services/tts_process_service.py" = ["F822"]
+"app/ui/main_window.py" = ["F401"]
+"app/ui/word_input_view.py" = ["F401"]
+"tests/conftest.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["openpyxl.*", "lxml.*"]
+ignore_missing_imports = true

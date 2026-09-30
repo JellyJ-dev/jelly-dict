@@ -1,0 +1,19 @@
+<div class="jellydict-card" data-auto-word="{{ShowFrontAudio}}">
+<div class="headword-block">
+  {{#Reading}}
+  <div class="reading-line reading-line--hidden">{{Reading}}</div>
+  {{/Reading}}
+  {{#WordAudio}}
+  <div class="headword playable-audio" data-audio-bank="word-audio" role="button" tabindex="0">{{Word}}</div>
+  {{/WordAudio}}
+  {{^WordAudio}}
+  <div class="headword">{{Word}}</div>
+  {{/WordAudio}}
+</div>
+
+{{#WordAudio}}
+<span id="word-audio" class="audio-bank">{{WordAudio}}</span>
+{{/WordAudio}}
+
+<!-- jellydict:audio-controller -->
+</div>
